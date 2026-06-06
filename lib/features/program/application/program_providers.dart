@@ -2,6 +2,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../data/program_repository.dart';
 import '../domain/models/daily_record.dart';
 import '../domain/models/program_state.dart';
 import 'program_date_logic.dart';
@@ -37,6 +38,11 @@ Future<Isar> openIsar() async {
 @Riverpod(keepAlive: true)
 ProgramDateLogic programDateLogic(ProgramDateLogicRef ref) =>
     const ProgramDateLogic();
+
+/// Repositorio de datos (acceso a Isar). Vive tanto como la app.
+@Riverpod(keepAlive: true)
+ProgramRepository programRepository(ProgramRepositoryRef ref) =>
+    ProgramRepository(ref.watch(isarProvider));
 
 /// Estado del programa observado en vivo desde Isar (singleton id == 1).
 @riverpod
