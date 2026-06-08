@@ -25,7 +25,12 @@ class PhaseGate {
 }
 
 /// Reglas de calendario del programa Live Hard. **Dart puro y sin estado**:
-/// recibe siempre el [ProgramState] y un `now` inyectable para poder testear.
+/// recibe siempre las fechas (o el [ProgramState]) y un `now` inyectable para
+/// poder testear.
+///
+/// Convenciones (rangos inclusivos, fechas normalizadas con [DateX.dayOnly]):
+///  - Cada fase dura [ProgramPhase.durationDays] días: 75 Hard = 75, Fases = 30.
+///  - `finDeFase = inicio + (durationDays - 1)`.
 class ProgramDateLogic {
   const ProgramDateLogic();
 
@@ -33,31 +38,83 @@ class ProgramDateLogic {
   /// antes de poder iniciar la Fase 2.
   static const int phase2RestDays = 30;
 
-  /// La Fase 3 debe iniciar exactamente este número de días ANTES del
-  /// aniversario del Día 1 de 75 Hard.
-  static const int phase3DaysBeforeAnniversary = 30;
-
   // ----------------------------------------------------------------
-  // FASE 2 — espera obligatoria de 30 días tras terminar la Fase 1.
+  // Helpers de fase genéricos.
   // ----------------------------------------------------------------
 
-  /// Primera fecha en la que se puede iniciar la Fase 2.
-  /// Lanza si la Fase 1 aún no ha sido completada.
-  DateTime earliestPhase2Start(ProgramState state) {
-    final completed = state.phase1CompletedDate;
-    if (completed == null) {
-      throw StateError(
-          'No se puede calcular el inicio de Fase 2: la Fase 1 no está completada.');
-    }
-    return completed.dayOnly.add(const Duration(days: phase2RestDays));
+  /// Último día (inclusive) de una fase que empieza en [start].
+  DateTime phaseEndDate(DateTime start, ProgramPhase phase) =>
+      start.dayOnly.add(Duration(days: phase.durationDays - 1));
+
+  /// Último día (inclusive) del 75 Hard a partir del Día 1.
+  DateTime hard75LastDay(ProgramState state) =>
+      phaseEndDate(state.programStartDate, ProgramPhase.hard75);
+
+  // ----------------------------------------------------------------
+  // FASE 3 — ventana ESTÁTICA que TERMINA en el aniversario del Día 1.
+  // ----------------------------------------------------------------
+
+  /// Aniversario del Día 1 de 75 Hard (programStartDate + 1 año).
+  DateTime anniversaryOf75Hard(ProgramState state) =>
+      state.programStartDate.dayOnly.addYears(1);
+
+  /// Último día de la Fase 3 = el aniversario.
+  DateTime phase3End(ProgramState state) => anniversaryOf75Hard(state);
+
+  /// Día 1 OBLIGATORIO de la Fase 3 a partir del Día 1 del 75 Hard.
+  /// La Fase 3 ocupa los 30 días que TERMINAN en el aniversario.
+  DateTime mandatoryPhase3StartFor(DateTime hard75Day1) => hard75Day1.dayOnly
+      .addYears(1)
+      .subtract(Duration(days: ProgramPhase.phase3.durationDays - 1));
+
+  /// Día 1 obligatorio de la Fase 3 derivado del [state].
+  DateTime mandatoryPhase3Start(ProgramState state) =>
+      mandatoryPhase3StartFor(state.programStartDate);
+
+  // ----------------------------------------------------------------
+  // FASE 1 — empieza después de terminar el 75 Hard.
+  // ----------------------------------------------------------------
+
+  /// Primera fecha válida para iniciar la Fase 1: el día siguiente al fin del
+  /// 75 Hard, y nunca en el pasado.
+  DateTime earliestPhase1StartFor(DateTime hard75Day1, {DateTime? now}) {
+    final today = (now ?? DateTime.now()).dayOnly;
+    final afterHard75 =
+        phaseEndDate(hard75Day1, ProgramPhase.hard75).add(const Duration(days: 1));
+    return afterHard75.isAfter(today) ? afterHard75 : today;
   }
 
-  /// ¿Puede el usuario iniciar la Fase 2 hoy?
+  /// Sugerencia por defecto de inicio de Fase 1: hoy + 7 días (o el mínimo
+  /// válido si ese mínimo es posterior).
+  DateTime defaultPhase1StartFor(DateTime hard75Day1, {DateTime? now}) {
+    final today = (now ?? DateTime.now()).dayOnly;
+    final inAWeek = today.add(const Duration(days: 7));
+    final earliest = earliestPhase1StartFor(hard75Day1, now: now);
+    return inAWeek.isAfter(earliest) ? inAWeek : earliest;
+  }
+
+  // ----------------------------------------------------------------
+  // FASE 2 — descanso obligatorio de 30 días tras terminar la Fase 1,
+  //          y debe terminar antes de que empiece la Fase 3.
+  // ----------------------------------------------------------------
+
+  /// Primera fecha válida para iniciar la Fase 2 dado el inicio de la Fase 1:
+  /// fin de la Fase 1 + 30 días de descanso.
+  DateTime earliestPhase2StartFrom(DateTime phase1Start) =>
+      phaseEndDate(phase1Start, ProgramPhase.phase1)
+          .add(const Duration(days: phase2RestDays));
+
+  /// Última fecha válida para iniciar la Fase 2 de modo que termine antes de
+  /// que empiece la Fase 3 (estática).
+  DateTime latestPhase2StartFor(DateTime hard75Day1) =>
+      mandatoryPhase3StartFor(hard75Day1)
+          .subtract(Duration(days: ProgramPhase.phase2.durationDays));
+
+  /// ¿Puede el usuario iniciar la Fase 2 hoy? (modelo legacy de avance en vivo)
   PhaseGate canStartPhase2(ProgramState state, {DateTime? now}) {
     final today = (now ?? DateTime.now()).dayOnly;
-
-    if (state.phase1CompletedDate == null) {
-      // Sin Fase 1 terminada no hay fecha base; devolvemos puerta cerrada.
+    final completed = state.phase1CompletedDate;
+    if (completed == null) {
       return PhaseGate(
         allowed: false,
         earliestDate: today,
@@ -65,9 +122,8 @@ class ProgramDateLogic {
       );
     }
 
-    final earliest = earliestPhase2Start(state);
-    final remaining = today.daysUntil(earliest); // >0 = aún faltan días
-
+    final earliest = completed.dayOnly.add(const Duration(days: phase2RestDays));
+    final remaining = today.daysUntil(earliest);
     if (remaining > 0) {
       return PhaseGate(
         allowed: false,
@@ -76,7 +132,6 @@ class ProgramDateLogic {
             'Faltan $remaining día(s) de descanso obligatorio para iniciar la Fase 2.',
       );
     }
-
     return PhaseGate(
       allowed: true,
       earliestDate: earliest,
@@ -84,26 +139,11 @@ class ProgramDateLogic {
     );
   }
 
-  // ----------------------------------------------------------------
-  // FASE 3 — debe iniciar exactamente 30 días antes del aniversario
-  //          del Día 1 de 75 Hard.
-  // ----------------------------------------------------------------
-
-  /// Aniversario del Día 1 de 75 Hard (programStartDate + 1 año).
-  DateTime anniversaryOf75Hard(ProgramState state) =>
-      state.programStartDate.dayOnly.addYears(1);
-
-  /// Fecha OBLIGATORIA de inicio de la Fase 3.
-  DateTime mandatoryPhase3Start(ProgramState state) => anniversaryOf75Hard(state)
-      .subtract(const Duration(days: phase3DaysBeforeAnniversary));
-
   /// ¿Puede iniciarse la Fase 3 hoy? La ventana es EXACTA (un solo día).
-  ///
-  /// `daysUntilStart` en la razón ayuda a la UI a mostrar la cuenta regresiva.
   PhaseGate canStartPhase3(ProgramState state, {DateTime? now}) {
     final today = (now ?? DateTime.now()).dayOnly;
     final start = mandatoryPhase3Start(state);
-    final diff = today.daysUntil(start); // 0 = hoy es el día exacto
+    final diff = today.daysUntil(start);
 
     if (diff > 0) {
       return PhaseGate(
@@ -131,7 +171,48 @@ class ProgramDateLogic {
   }
 
   // ----------------------------------------------------------------
-  // Helpers de racha / día actual.
+  // Validación del calendario completo (onboarding / reconfiguración).
+  // ----------------------------------------------------------------
+
+  /// Devuelve la lista de problemas (vacía = horario válido) para un calendario
+  /// propuesto. Trabaja con fechas crudas porque corre ANTES de persistir.
+  List<String> validateSchedule({
+    required DateTime hard75Day1,
+    required DateTime phase1Start,
+    required DateTime phase2Start,
+    DateTime? now,
+  }) {
+    final problems = <String>[];
+    final day1 = hard75Day1.dayOnly;
+    final p1 = phase1Start.dayOnly;
+    final p2 = phase2Start.dayOnly;
+
+    final minP1 = earliestPhase1StartFor(day1, now: now);
+    final p3Start = mandatoryPhase3StartFor(day1);
+    final minP2 = earliestPhase2StartFrom(p1);
+    final maxP2 = latestPhase2StartFor(day1);
+
+    if (p1.isBefore(minP1)) {
+      problems.add(
+          'La Fase 1 debe empezar el ${_fmt(minP1)} o después (tras el 75 Hard y no en el pasado).');
+    }
+    if (p2.isBefore(minP2)) {
+      problems.add(
+          'La Fase 2 debe empezar el ${_fmt(minP2)} o después ($phase2RestDays días de descanso tras la Fase 1).');
+    }
+    if (p2.isAfter(maxP2)) {
+      problems.add(
+          'La Fase 2 debe terminar antes de la Fase 3 (inicio máximo: ${_fmt(maxP2)}, Fase 3 inicia ${_fmt(p3Start)}).');
+    }
+    if (minP2.isAfter(maxP2)) {
+      problems.add(
+          'Con esa fecha de Fase 1 no cabe la Fase 2 antes de la Fase 3. Adelanta la Fase 1.');
+    }
+    return problems;
+  }
+
+  // ----------------------------------------------------------------
+  // Helpers de racha / día actual (modelo legacy de avance en vivo).
   // ----------------------------------------------------------------
 
   /// Número de día (1-based) dentro de la fase actual para una fecha dada.
@@ -143,4 +224,7 @@ class ProgramDateLogic {
   /// ¿Se ha alcanzado el último día de la fase actual?
   bool isPhaseComplete(ProgramState state, {DateTime? now}) =>
       dayNumberInPhase(state, now: now) >= state.currentPhase.durationDays;
+
+  static String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

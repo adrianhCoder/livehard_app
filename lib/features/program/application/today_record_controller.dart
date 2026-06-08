@@ -3,6 +3,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../domain/models/daily_record.dart';
+import '../domain/models/phase_schedule.dart';
 import 'program_providers.dart';
 
 // Tras editar: dart run build_runner build --delete-conflicting-outputs
@@ -35,12 +36,16 @@ class TodayRecordController extends _$TodayRecordController {
       throw StateError(
           'No se puede crear el registro de hoy: el programa no está iniciado.');
     }
-    final logic = ref.read(programDateLogicProvider);
+
+    // La fase y el día de hoy se derivan del calendario programado.
+    final status = PhaseSchedule.tryFromState(program)?.entryFor(today);
+    final phase = status?.phase ?? program.currentPhase;
+    final dayNumber = status?.dayNumber ?? 1;
 
     return DailyRecord()
       ..date = today
-      ..phase = program.currentPhase
-      ..dayNumber = logic.dayNumberInPhase(program, now: today);
+      ..phase = phase
+      ..dayNumber = dayNumber;
   }
 
   /// Marca o desmarca una tarea de hoy y persiste el cambio.

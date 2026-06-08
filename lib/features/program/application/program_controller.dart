@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
+import '../data/program_repository.dart';
 import '../domain/models/program_state.dart';
 import 'program_date_logic.dart';
 import 'program_providers.dart';
@@ -18,6 +19,17 @@ class PhaseGateException implements Exception {
 
   @override
   String toString() => gate.reason ?? 'No se puede iniciar la fase todavía.';
+}
+
+/// Se lanza cuando el calendario propuesto en el onboarding viola las reglas.
+/// Lleva la lista de problemas legibles producida por [ProgramDateLogic].
+class ScheduleException implements Exception {
+  ScheduleException(this.problems);
+
+  final List<String> problems;
+
+  @override
+  String toString() => problems.join('\n');
 }
 
 /// Controlador de acciones sobre el [ProgramState]: iniciar el programa,
@@ -44,6 +56,37 @@ class ProgramController extends _$ProgramController {
   /// Arranca el programa en la Fase 75 Hard. [startDate] por defecto es hoy.
   Future<void> startProgram({DateTime? startDate}) async {
     await _repo.startProgram((startDate ?? DateTime.now()).dayOnly);
+  }
+
+  /// Termina el onboarding: ancla el 75 Hard y programa las Fases 1 y 2 (la
+  /// Fase 3 es estática). Valida el calendario antes de persistir.
+  ///
+  /// Lanza [ScheduleException] si el calendario propuesto rompe las reglas.
+  Future<void> completeOnboarding({
+    required DateTime hard75Day1,
+    required DateTime phase1Start,
+    required DateTime phase2Start,
+    DateTime? now,
+  }) async {
+    final problems = _logic.validateSchedule(
+      hard75Day1: hard75Day1,
+      phase1Start: phase1Start,
+      phase2Start: phase2Start,
+      now: now,
+    );
+    if (problems.isNotEmpty) {
+      throw ScheduleException(problems);
+    }
+
+    final state = _repo.getState() ?? ProgramState();
+    state
+      ..programStartDate = hard75Day1.dayOnly
+      ..phase1StartDate = phase1Start.dayOnly
+      ..phase2StartDate = phase2Start.dayOnly
+      ..currentPhase = ProgramPhase.phase1
+      ..currentPhaseStartDate = phase1Start.dayOnly
+      ..onboardingComplete = true;
+    await _repo.saveState(state);
   }
 
   /// Marca la Fase 1 como completada hoy. Necesario porque la Fase 2 exige

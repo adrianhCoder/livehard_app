@@ -16,11 +16,28 @@ class ProgramState {
   /// que determina la fecha obligatoria de la Fase 3.
   late DateTime programStartDate;
 
-  /// Fase en curso.
+  /// `true` cuando el usuario terminó el onboarding (ya dio la fecha del 75
+  /// Hard y programó las fases). Mientras sea `false`, la app muestra el wizard.
+  bool onboardingComplete = false;
+
+  // -----------------------------------------------------------------
+  // Programación de fases (modelo "agendado por adelantado").
+  // La fase/día de HOY se DERIVA de estas fechas (ver PhaseSchedule); ya no se
+  // avanza de fase en vivo. Fase 3 es estática: se calcula desde el aniversario.
+  // -----------------------------------------------------------------
+
+  /// Día 1 programado de la Fase 1 (`null` hasta que se agenda).
+  DateTime? phase1StartDate;
+
+  /// Día 1 programado de la Fase 2 (`null` hasta que se agenda).
+  DateTime? phase2StartDate;
+
+  /// Fase en curso. **Legacy/secundario**: se conserva para no romper el flujo
+  /// de avance en vivo; la vista de hoy usa [PhaseSchedule] en su lugar.
   @enumerated
   ProgramPhase currentPhase = ProgramPhase.hard75;
 
-  /// Día 1 de la fase ACTUAL (cambia al avanzar o reiniciar una fase).
+  /// Día 1 de la fase ACTUAL en el modelo legacy de avance en vivo.
   late DateTime currentPhaseStartDate;
 
   /// Fecha en que se completó la Fase 1. Necesaria para validar la espera
