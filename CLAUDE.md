@@ -78,21 +78,25 @@ lib/
         daily_record.dart         # registro diario (booleans por tarea, notas, foto)
         phase_schedule.dart       # PhaseSchedule.fromState -> rangos + entryFor(día)
         phase_progress.dart       # progreso real por fase (desde DailyRecords)
+        streak_failure.dart       # StreakFailure + detectStreakFailure (PURO, testeado)
         attempt_summary.dart      # (legacy, mock)
       application/
         program_date_logic.dart   # reglas de fecha PURAS + validateSchedule (testeado)
-        program_controller.dart   # completeOnboarding, avance/reinicio (acciones)
+        program_controller.dart   # onboarding, avance, reinicios de racha (acciones)
         today_record_controller.dart  # registro de HOY (toggle tareas/notas/foto)
         phase_overview_provider.dart  # progreso real de todas las fases
+        streak_failure_provider.dart  # detecta racha rota AHORA (desde Isar)
         program_providers.dart    # isar, repo, programState (stream), date logic
         mock_data.dart            # mockProfile + seedSampleProgram(repo)
-      data/program_repository.dart  # acceso a Isar (estado + registros)
+      data/program_repository.dart  # acceso a Isar (estado + registros + borrados)
       presentation/
-        calendar_screen.dart      # progreso: tarjetas + calendario reales (Isar)
+        calendar_screen.dart      # progreso: tarjetas + calendario (días pasados editables)
+        failure_screen.dart       # "HAS FALLADO" + confirmación "START OVER"
         phase_schedule_screen.dart  # calendario interactivo 3 colores (programar)
     profile/presentation/profile_screen.dart  # ajustes (mock) + reprogramar fases
   main.dart                       # entrypoint + HomeScreen + vista de HOY
 test/unit/program_date_logic_test.dart        # reglas de fecha + PhaseSchedule
+test/unit/streak_failure_test.dart            # detección de racha rota
 ```
 
 ## Convenciones / notas
@@ -107,7 +111,12 @@ test/unit/program_date_logic_test.dart        # reglas de fecha + PhaseSchedule
 - **Tras editar modelos Isar o providers**, corre `build_runner` (regenera `*.g.dart`,
   que SÍ se commitean).
 - El **perfil** del usuario todavía es mock (`mockProfile`); no hay store real aún.
-- Pendiente: detección automática de racha rota (marcar día incompleto → reinicio).
+- **Racha rota**: `detectStreakFailure` busca el primer día PASADO de una fase sin
+  completar (hoy nunca cuenta). Si lo hay, `HomeScreen` bloquea HOY con
+  `FailureScreen`. Dos salidas: (a) editar días pasados en el calendario (backfill),
+  (b) "START OVER" → `restartPhaseFrom` (Fase 1/2: reprograma + borra esa fase y las
+  posteriores) o `restartEntireProgram` (Fase 3: reset total → vuelve a onboarding).
+- Pendiente: store real de perfil de usuario.
 
 ## Memoria persistente
 

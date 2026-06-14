@@ -7,10 +7,12 @@ import 'package:intl/intl.dart';
 import 'core/enums/program_phase.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/program/application/program_providers.dart';
+import 'features/program/application/streak_failure_provider.dart';
 import 'features/program/application/today_record_controller.dart';
 import 'features/program/domain/models/phase_schedule.dart';
 import 'features/program/domain/models/program_state.dart';
 import 'features/program/presentation/calendar_screen.dart';
+import 'features/program/presentation/failure_screen.dart';
 
 Future<void> main() async {
   // Necesario antes de usar plugins (path_provider, Isar) en `main`.
@@ -78,9 +80,22 @@ class HomeScreen extends ConsumerWidget {
         child: programAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
-          data: (program) => (program == null || !program.onboardingComplete)
-              ? const OnboardingFlow()
-              : _TodayView(program: program),
+          data: (program) {
+            if (program == null || !program.onboardingComplete) {
+              return const OnboardingFlow();
+            }
+            // Antes de la checklist, comprueba si la racha está rota: un día
+            // pasado sin completar bloquea HOY con la pantalla "HAS FALLADO".
+            final failureAsync = ref.watch(streakFailureProvider);
+            return failureAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (_, __) => _TodayView(program: program),
+              data: (failure) => failure != null
+                  ? FailureScreen(failure: failure)
+                  : _TodayView(program: program),
+            );
+          },
         ),
       ),
     );

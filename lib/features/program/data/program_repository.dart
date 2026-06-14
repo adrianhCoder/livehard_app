@@ -83,4 +83,18 @@ class ProgramRepository {
           .dateBetween(from.dayOnly, to.dayOnly)
           .sortByDate()
           .findAll();
+
+  /// Borra todos los registros de una fase. Se usa al REINICIAR esa fase: el
+  /// progreso vuelve a cero. Los registros se etiquetan con su fase al crearse.
+  Future<void> deleteRecordsForPhase(ProgramPhase phase) async {
+    await _isar.writeTxn(
+      () => _isar.dailyRecords.filter().phaseEqualTo(phase).deleteAll(),
+    );
+  }
+
+  /// Borra TODOS los registros diarios. Se usa al reiniciar el programa entero
+  /// (fallo de Fase 3 → se rehace todo desde el 75 Hard).
+  Future<void> deleteAllRecords() async {
+    await _isar.writeTxn(() => _isar.dailyRecords.clear());
+  }
 }

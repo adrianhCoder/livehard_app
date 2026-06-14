@@ -143,6 +143,111 @@ class ProgramController extends _$ProgramController {
     await _repo.saveState(state);
   }
 
+  /// Reinicia la Fase 1 o la Fase 2 tras romper la racha (modelo agendado).
+  ///
+  /// Reprograma la fase fallada para que empiece en [newStart] (hoy o más
+  /// adelante), registra el [FailedAttempt], borra el progreso de esa fase y de
+  /// las posteriores, y revalida el calendario resultante.
+  ///
+  /// Si al reiniciar la Fase 1 la Fase 2 queda demasiado pegada, la Fase 2 se
+  /// recoloca en su primera fecha válida (fin de Fase 1 + descanso).
+  /// Lanza [ScheduleException] si el calendario resultante no cabe antes de la
+  /// Fase 3 (estática); la UI debe pedir otra fecha o reprogramar.
+  /// Lanza [ArgumentError] si [phase] no es Fase 1 ni Fase 2.
+  Future<void> restartPhaseFrom({
+    required ProgramPhase phase,
+    required DateTime newStart,
+    int dayReached = 0,
+    String? reason,
+    DateTime? now,
+  }) async {
+    if (phase != ProgramPhase.phase1 && phase != ProgramPhase.phase2) {
+      throw ArgumentError(
+          'restartPhaseFrom solo aplica a Fase 1 o Fase 2 (recibido: $phase).');
+    }
+
+    final state = _requireState();
+    final today = (now ?? DateTime.now()).dayOnly;
+    final start = newStart.dayOnly;
+
+    if (phase == ProgramPhase.phase1) {
+      state.phase1StartDate = start;
+      state.phase1CompletedDate = null;
+      // Si la Fase 2 quedó antes del descanso mínimo, recolócala.
+      final minP2 = _logic.earliestPhase2StartFrom(start);
+      final p2 = state.phase2StartDate;
+      if (p2 == null || p2.isBefore(minP2)) {
+        state.phase2StartDate = minP2;
+      }
+    } else {
+      state.phase2StartDate = start;
+    }
+
+    final problems = _logic.validateSchedule(
+      hard75Day1: state.programStartDate,
+      phase1Start: state.phase1StartDate!,
+      phase2Start: state.phase2StartDate!,
+      now: now,
+    );
+    if (problems.isNotEmpty) {
+      throw ScheduleException(problems);
+    }
+
+    state.failedAttempts = [
+      ...state.failedAttempts,
+      FailedAttempt.create(
+        failedAt: today,
+        phase: phase,
+        dayReached: dayReached,
+        reason: reason,
+      ),
+    ];
+    await _repo.saveState(state);
+
+    // El progreso de la fase reiniciada y de las posteriores vuelve a cero.
+    await _repo.deleteRecordsForPhase(phase);
+    if (phase == ProgramPhase.phase1) {
+      await _repo.deleteRecordsForPhase(ProgramPhase.phase2);
+    }
+    await _repo.deleteRecordsForPhase(ProgramPhase.phase3);
+  }
+
+  /// Reinicio TOTAL del programa: fallar la Fase 3 obliga a rehacer todo el
+  /// 75 Hard desde cero. Borra todos los registros, deja registro del fallo y
+  /// devuelve al usuario al onboarding (con [newHard75Day1] como nuevo Día 1,
+  /// hoy por defecto). Conserva el historial de [FailedAttempt].
+  Future<void> restartEntireProgram({
+    DateTime? newHard75Day1,
+    int dayReached = 0,
+    String? reason,
+    DateTime? now,
+  }) async {
+    final state = _requireState();
+    final today = (now ?? DateTime.now()).dayOnly;
+    final day1 = (newHard75Day1 ?? today).dayOnly;
+
+    state.failedAttempts = [
+      ...state.failedAttempts,
+      FailedAttempt.create(
+        failedAt: today,
+        phase: ProgramPhase.phase3,
+        dayReached: dayReached,
+        reason: reason ?? 'Fase 3 reprobada: reinicio total del programa.',
+      ),
+    ];
+    state
+      ..programStartDate = day1
+      ..currentPhase = ProgramPhase.hard75
+      ..currentPhaseStartDate = day1
+      ..phase1StartDate = null
+      ..phase2StartDate = null
+      ..phase1CompletedDate = null
+      ..yearFailed = false
+      ..onboardingComplete = false;
+    await _repo.saveState(state);
+    await _repo.deleteAllRecords();
+  }
+
   /// Falla del año en Fase 3: marca [ProgramState.yearFailed] y deja registro.
   /// No reinicia fechas automáticamente; eso lo decide el flujo de la UI
   /// (p. ej. ofrecer arrancar un programa nuevo con [startProgram]).

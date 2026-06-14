@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/enums/program_phase.dart';
+import '../../../core/utils/date_x.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../application/mock_data.dart';
 import '../application/phase_overview_provider.dart';
 import '../application/program_controller.dart';
 import '../application/program_providers.dart';
+import '../application/streak_failure_provider.dart';
+import '../domain/models/daily_record.dart';
 import '../domain/models/phase_progress.dart';
 import 'phase_schedule_screen.dart';
 
@@ -136,8 +139,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 }
 
-/// Hoja de detalle de un día: lee el [DailyRecord] real de Isar.
-class _DayDetailSheet extends ConsumerWidget {
+/// Hoja de detalle de un día. Los días de HOY o anteriores son EDITABLES (sirve
+/// para "marcar los días anteriores" tras una racha rota); los futuros son de
+/// solo lectura. Cada cambio se persiste y refresca el aviso de racha rota.
+class _DayDetailSheet extends ConsumerStatefulWidget {
   const _DayDetailSheet(
       {required this.phase, required this.day, required this.date});
 
@@ -146,10 +151,32 @@ class _DayDetailSheet extends ConsumerWidget {
   final DateTime date;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DayDetailSheet> createState() => _DayDetailSheetState();
+}
+
+class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
+  Future<void> _toggle(DailyTask task) async {
     final repo = ref.read(programRepositoryProvider);
-    final record = repo.getRecordForDate(date);
-    final tasks = PhaseRules.tasksFor(phase);
+    final record = repo.getRecordForDate(widget.date) ??
+        (DailyRecord()
+          ..date = widget.date
+          ..phase = widget.phase
+          ..dayNumber = widget.day);
+    record.setDone(task, !record.isDone(task));
+    await repo.saveRecord(record);
+
+    // Refresca el calendario y la detección de racha rota.
+    ref.invalidate(phaseOverviewProvider);
+    ref.invalidate(streakFailureProvider);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = ref.read(programRepositoryProvider);
+    final record = repo.getRecordForDate(widget.date);
+    final tasks = PhaseRules.tasksFor(widget.phase);
+    final editable = !widget.date.dayOnly.isAfter(DateTime.now().dayOnly);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
@@ -157,34 +184,44 @@ class _DayDetailSheet extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${phase.label} · Día $day',
+          Text('${widget.phase.label} · Día ${widget.day}',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(DateFormat('EEEE, MMM d, yyyy').format(date),
+          Text(DateFormat('EEEE, MMM d, yyyy').format(widget.date),
               style: TextStyle(color: Colors.grey.shade700)),
           const SizedBox(height: 16),
-          if (record == null)
-            const Text('Sin registro para este día.',
+          if (!editable && record == null)
+            const Text('Día futuro: sin registro todavía.',
                 style: TextStyle(color: Colors.grey))
           else ...[
             for (final t in tasks)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    Icon(
-                      record.isDone(t)
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      size: 20,
-                      color: record.isDone(t) ? Colors.red : Colors.grey,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(t.label)),
-                  ],
+              InkWell(
+                onTap: editable ? () => _toggle(t) : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        (record?.isDone(t) ?? false)
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        size: 22,
+                        color: (record?.isDone(t) ?? false)
+                            ? Colors.red
+                            : Colors.grey,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(t.label)),
+                    ],
+                  ),
                 ),
               ),
-            if (record.notes.isNotEmpty) ...[
+            if (editable) ...[
+              const SizedBox(height: 8),
+              Text('Toca una tarea para marcarla en este día.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+            ],
+            if (record != null && record.notes.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Text('Notas:', style: TextStyle(fontWeight: FontWeight.bold)),
               Text(record.notes),
