@@ -6,7 +6,7 @@ part of 'program_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$programControllerHash() => r'd38aec5e564b504565487c45df8276e02fa10f91';
+String _$programControllerHash() => r'5d01c752296922f99f6eb2bb9d6da01d26e87982';
 
 /// Controlador de acciones sobre el [ProgramState]: iniciar el programa,
 /// avanzar de fase, registrar fallos y reinicios.

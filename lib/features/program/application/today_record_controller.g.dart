@@ -7,7 +7,7 @@ part of 'today_record_controller.dart';
 // **************************************************************************
 
 String _$todayRecordControllerHash() =>
-    r'fd2f1189ed2415a38cb896df11f20091f68ab65a';
+    r'2a0472db96be9b4c588d46e4e3d3d805aded3160';
 
 /// Observa y muta el [DailyRecord] de HOY.
 ///

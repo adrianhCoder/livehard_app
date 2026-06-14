@@ -6,7 +6,7 @@ part of 'phase_overview_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$phaseOverviewHash() => r'93073f8a4a615e33006a79f7ea797cf96122fec8';
+String _$phaseOverviewHash() => r'aea41edbb43d3c92431bd0c1feb213253592114a';
 
 /// Progreso real de todas las fases (75 Hard + Fases 1-3) calculado desde el
 /// [ProgramState] y los [DailyRecord] de Isar. Lo consume la pantalla de

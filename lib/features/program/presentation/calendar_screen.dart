@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../application/dev_clock.dart';
 import '../application/mock_data.dart';
 import '../application/phase_overview_provider.dart';
 import '../application/program_controller.dart';
@@ -89,6 +90,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 Expanded(
                   child: _CalendarGrid(
                     progress: current,
+                    today: ref.watch(simulatedNowProvider).dayOnly,
                     onDayTap: (day) => _showDayDetail(current, day),
                   ),
                 ),
@@ -155,20 +157,36 @@ class _DayDetailSheet extends ConsumerStatefulWidget {
 }
 
 class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
-  Future<void> _toggle(DailyTask task) async {
-    final repo = ref.read(programRepositoryProvider);
-    final record = repo.getRecordForDate(widget.date) ??
-        (DailyRecord()
-          ..date = widget.date
-          ..phase = widget.phase
-          ..dayNumber = widget.day);
-    record.setDone(task, !record.isDone(task));
-    await repo.saveRecord(record);
+  /// Crea (si hace falta) y devuelve el registro de este día.
+  DailyRecord _recordForDay() =>
+      ref.read(programRepositoryProvider).getRecordForDate(widget.date) ??
+      (DailyRecord()
+        ..date = widget.date
+        ..phase = widget.phase
+        ..dayNumber = widget.day);
 
+  Future<void> _persist(DailyRecord record) async {
+    await ref.read(programRepositoryProvider).saveRecord(record);
     // Refresca el calendario y la detección de racha rota.
     ref.invalidate(phaseOverviewProvider);
     ref.invalidate(streakFailureProvider);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggle(DailyTask task) async {
+    final record = _recordForDay();
+    record.setDone(task, !record.isDone(task));
+    await _persist(record);
+  }
+
+  /// Marca o desmarca TODAS las tareas de la fase para este día de una vez.
+  /// Es el "completar día" del backfill: deja el día como completo (o vacío).
+  Future<void> _setAll(bool done) async {
+    final record = _recordForDay();
+    for (final t in PhaseRules.tasksFor(widget.phase)) {
+      record.setDone(t, done);
+    }
+    await _persist(record);
   }
 
   @override
@@ -176,7 +194,8 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
     final repo = ref.read(programRepositoryProvider);
     final record = repo.getRecordForDate(widget.date);
     final tasks = PhaseRules.tasksFor(widget.phase);
-    final editable = !widget.date.dayOnly.isAfter(DateTime.now().dayOnly);
+    final editable = !widget.date.dayOnly
+        .isAfter(ref.watch(simulatedNowProvider).dayOnly);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
@@ -194,6 +213,26 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
             const Text('Día futuro: sin registro todavía.',
                 style: TextStyle(color: Colors.grey))
           else ...[
+            if (editable) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: (record?.isComplete ?? false)
+                        ? Colors.grey.shade600
+                        : Colors.red,
+                  ),
+                  onPressed: () => _setAll(!(record?.isComplete ?? false)),
+                  icon: Icon((record?.isComplete ?? false)
+                      ? Icons.remove_done
+                      : Icons.done_all),
+                  label: Text((record?.isComplete ?? false)
+                      ? 'Desmarcar día'
+                      : 'Completar día'),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             for (final t in tasks)
               InkWell(
                 onTap: editable ? () => _toggle(t) : null,
@@ -218,8 +257,11 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
               ),
             if (editable) ...[
               const SizedBox(height: 8),
-              Text('Toca una tarea para marcarla en este día.',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              Text(
+                'Toca una tarea para marcarla, o usa "Completar día" para '
+                'marcarlas todas.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
             ],
             if (record != null && record.notes.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -383,11 +425,18 @@ class _PhaseCard extends StatelessWidget {
 }
 
 /// Cuadrícula de días de la fase. Completados en rojo, parciales en ámbar,
-/// futuros en negro; el día de hoy con borde.
+/// futuros en negro; el día de hoy con borde negro. Los días PASADOS sin
+/// completar (racha rota) se marcan con un anillo rojo para que sea obvio cuáles
+/// hay que "marcar" en el backfill.
 class _CalendarGrid extends StatelessWidget {
-  const _CalendarGrid({required this.progress, required this.onDayTap});
+  const _CalendarGrid({
+    required this.progress,
+    required this.today,
+    required this.onDayTap,
+  });
 
   final PhaseProgress progress;
+  final DateTime today;
   final ValueChanged<int> onDayTap;
 
   @override
@@ -403,13 +452,18 @@ class _CalendarGrid extends StatelessWidget {
         final day = i + 1;
         final done = progress.completedDays.contains(day);
         final partial = progress.partialDays.contains(day);
-        final isToday = progress.currentDay == day;
+        final date = progress.startDate.add(Duration(days: i)).dayOnly;
+        final isToday = date == today;
+        // Día pasado (anterior a hoy) que no quedó completo: racha rota.
+        final missed = date.isBefore(today) && !done;
 
         final color = done
             ? Colors.red
             : partial
                 ? Colors.orange
-                : Colors.black;
+                : missed
+                    ? Colors.red.shade300
+                    : Colors.black;
 
         return GestureDetector(
           onTap: () => onDayTap(day),
@@ -417,8 +471,11 @@ class _CalendarGrid extends StatelessWidget {
             margin: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border:
-                  isToday ? Border.all(color: Colors.black, width: 2) : null,
+              border: isToday
+                  ? Border.all(color: Colors.black, width: 2)
+                  : missed
+                      ? Border.all(color: Colors.red, width: 2)
+                      : null,
             ),
             child: Center(
               child: Text(

@@ -1,11 +1,16 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'core/enums/program_phase.dart';
+import 'core/utils/date_x.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/program/application/dev_clock.dart';
+import 'features/program/application/program_controller.dart';
+import 'features/program/application/program_date_logic.dart';
 import 'features/program/application/program_providers.dart';
 import 'features/program/application/streak_failure_provider.dart';
 import 'features/program/application/today_record_controller.dart';
@@ -76,6 +81,7 @@ class HomeScreen extends ConsumerWidget {
     final programAsync = ref.watch(programStateProvider);
 
     return Scaffold(
+      bottomNavigationBar: kDebugMode ? const _DevClockBar() : null,
       body: SafeArea(
         child: programAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -110,12 +116,13 @@ class _TodayView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(simulatedNowProvider);
     final schedule = PhaseSchedule.tryFromState(program);
-    final status = schedule?.entryFor(DateTime.now());
+    final status = schedule?.entryFor(now);
 
     // Estados sin checklist (antes de empezar, descanso o año completado).
     if (status == null || status.kind != TodayKind.active) {
-      return _ScheduleStatusView(status: status);
+      return _ScheduleStatusView(status: status, program: program);
     }
 
     final phase = status.phase!;
@@ -123,7 +130,7 @@ class _TodayView extends ConsumerWidget {
     final tasks = PhaseRules.tasksFor(phase);
     final recordAsync = ref.watch(todayRecordControllerProvider);
     final dateLabel =
-        '${phase.label} · ${DateFormat('MMM d, yyyy').format(DateTime.now())}';
+        '${phase.label} · ${DateFormat('MMM d, yyyy').format(now)}';
     final controller = ref.read(todayRecordControllerProvider.notifier);
 
     return recordAsync.when(
@@ -333,15 +340,31 @@ class _TaskRow extends StatelessWidget {
 }
 
 /// Vista para los días que no son de checklist: antes de empezar la Fase 1,
-/// en un descanso entre fases, o cuando ya se completó el año.
-class _ScheduleStatusView extends StatelessWidget {
-  const _ScheduleStatusView({required this.status});
+/// en un descanso entre fases, o cuando ya se completó el año. En los descansos
+/// ofrece iniciar la próxima fase ahora o ajustar su fecha (salvo la Fase 3,
+/// que es estática).
+class _ScheduleStatusView extends ConsumerWidget {
+  const _ScheduleStatusView({required this.status, required this.program});
 
   final TodayStatus? status;
+  final ProgramState program;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final (icon, title, subtitle) = _content();
+    final s = status;
+    final nextPhase = s?.nextPhase;
+    final showActions = s != null &&
+        (s.kind == TodayKind.beforeStart || s.kind == TodayKind.waiting) &&
+        nextPhase != null;
+    final opts = showActions
+        ? ref.read(programDateLogicProvider).optionsForNextPhase(
+              program,
+              nextPhase!,
+              now: ref.watch(simulatedNowProvider),
+            )
+        : null;
+
     return Stack(
       children: [
         Align(
@@ -370,6 +393,10 @@ class _ScheduleStatusView extends StatelessWidget {
                 Text(subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
+                if (opts != null) ...[
+                  const SizedBox(height: 28),
+                  SizedBox(width: 320, child: _PhaseStartActions(options: opts)),
+                ],
               ],
             ),
           ),
@@ -403,6 +430,216 @@ class _ScheduleStatusView extends StatelessWidget {
       case TodayKind.active:
         return (Icons.check, 'En curso', '');
     }
+  }
+}
+
+/// Botones de la pantalla de descanso: "Iniciar ahora" (si HOY es válido) y
+/// "Ajustar fecha de inicio". Para la Fase 3 (estática) solo muestra la nota
+/// de que su fecha es fija.
+class _PhaseStartActions extends ConsumerWidget {
+  const _PhaseStartActions({required this.options});
+
+  final PhaseStartOptions options;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final o = options;
+
+    if (!o.adjustable) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, size: 18, color: Colors.grey.shade600),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              o.note ?? 'Fecha fija.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (o.note != null) ...[
+          Text(
+            o.note!,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 12),
+        ],
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.red,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+          onPressed: o.canStartToday ? () => _apply(context, ref, _today(ref)) : null,
+          icon: const Icon(Icons.play_arrow),
+          label: Text('Iniciar ${o.phase.label} ahora'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+          onPressed: () => _adjust(context, ref),
+          icon: const Icon(Icons.edit_calendar),
+          label: const Text('Ajustar fecha de inicio'),
+        ),
+      ],
+    );
+  }
+
+  DateTime _today(WidgetRef ref) => ref.read(simulatedNowProvider).dayOnly;
+
+  Future<void> _adjust(BuildContext context, WidgetRef ref) async {
+    final today = _today(ref);
+    final earliest = options.earliest ?? today;
+    final latest = options.latest ?? earliest.add(const Duration(days: 365));
+    final initial = today.isBefore(earliest)
+        ? earliest
+        : (today.isAfter(latest) ? latest : today);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: earliest,
+      lastDate: latest,
+    );
+    if (picked != null && context.mounted) {
+      await _apply(context, ref, picked);
+    }
+  }
+
+  Future<void> _apply(BuildContext context, WidgetRef ref, DateTime date) async {
+    try {
+      await ref
+          .read(programControllerProvider.notifier)
+          .setPhaseStart(phase: options.phase, date: date);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '${options.phase.label} programada para ${DateFormat('MMM d, yyyy').format(date)}.'),
+        ));
+      }
+    } on ScheduleException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.problems.join('\n'))));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('No se pudo programar: $e')));
+      }
+    }
+  }
+}
+
+/// Barra de desarrollo (solo en debug): "viaja en el tiempo" sumando días al
+/// reloj simulado para probar el avance de fases y la detección de racha rota
+/// sin esperar días reales. Ver [DevClock] / [simulatedNowProvider].
+class _DevClockBar extends ConsumerWidget {
+  const _DevClockBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(simulatedNowProvider);
+    final offset = ref.watch(devClockProvider);
+    final clock = ref.read(devClockProvider.notifier);
+
+    return Material(
+      color: Colors.amber.shade200,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'DEV · ${DateFormat('EEE MMM d').format(now)}'
+                  '  (${offset >= 0 ? '+' : ''}$offset d)',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+              _DevButton(label: '−1d', onTap: () => clock.advance(-1)),
+              _DevButton(label: '+1d', onTap: () => clock.advance(1)),
+              _DevButton(label: '+10d', onTap: () => clock.advance(10)),
+              _DevButton(label: 'Reset', onTap: clock.reset),
+              _DevButton(
+                label: 'Wipe',
+                color: Colors.red.shade700,
+                onTap: () => _wipe(context, ref, clock),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Borra todos los datos (estado + registros) tras confirmar, y reinicia el
+  /// reloj. La app vuelve al onboarding para empezar una prueba desde cero.
+  Future<void> _wipe(
+      BuildContext context, WidgetRef ref, DevClock clock) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Borrar todos los datos'),
+        content: const Text(
+            'Solo para pruebas: elimina el programa y todos los registros. '
+            'Volverás al onboarding. ¿Continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Borrar todo'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(programControllerProvider.notifier).wipeEverythingForDev();
+      clock.reset();
+    }
+  }
+}
+
+class _DevButton extends StatelessWidget {
+  const _DevButton({required this.label, required this.onTap, this.color});
+
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color ?? Colors.black87,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(label,
+              style: const TextStyle(color: Colors.white, fontSize: 12)),
+        ),
+      ),
+    );
   }
 }
 

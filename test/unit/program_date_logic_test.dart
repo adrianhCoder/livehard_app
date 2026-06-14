@@ -108,6 +108,40 @@ void main() {
     });
   });
 
+  group('optionsForNextPhase', () {
+    // 75H: 2025-01-01.. ; Fase 1: 2025-04-01..04-30.
+    // earliestPhase2 = 04-30 + 30 = 2025-05-30. Fase 3 inicia 2025-12-03.
+    final state = stateWith(
+      programStart: DateTime(2025, 1, 1),
+      phase1Start: DateTime(2025, 4, 1),
+      phase2Start: DateTime(2025, 6, 1),
+    );
+
+    test('Fase 2 NO se puede iniciar durante el descanso obligatorio', () {
+      final o = logic.optionsForNextPhase(state, ProgramPhase.phase2,
+          now: DateTime(2025, 5, 15)); // antes de 05-30
+      expect(o.adjustable, isTrue);
+      expect(o.canStartToday, isFalse);
+      expect(o.earliest, DateTime(2025, 5, 30));
+      expect(o.note, contains('descanso'));
+    });
+
+    test('Fase 2 SÍ se puede iniciar cumplido el descanso de 30 días', () {
+      final o = logic.optionsForNextPhase(state, ProgramPhase.phase2,
+          now: DateTime(2025, 5, 30));
+      expect(o.canStartToday, isTrue);
+      expect(o.earliest, DateTime(2025, 5, 30));
+    });
+
+    test('Fase 3 nunca es ajustable (fecha fija)', () {
+      final o = logic.optionsForNextPhase(state, ProgramPhase.phase3,
+          now: DateTime(2025, 11, 1));
+      expect(o.adjustable, isFalse);
+      expect(o.canStartToday, isFalse);
+      expect(o.note, contains('no se puede mover'));
+    });
+  });
+
   group('PhaseSchedule.entryFor', () {
     final schedule = PhaseSchedule.tryFromState(stateWith(
       programStart: DateTime(2025, 1, 1),

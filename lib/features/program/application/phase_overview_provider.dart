@@ -4,6 +4,7 @@ import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../domain/models/phase_progress.dart';
 import '../domain/models/phase_schedule.dart';
+import 'dev_clock.dart';
 import 'program_providers.dart';
 
 // Tras editar: dart run build_runner build --delete-conflicting-outputs
@@ -22,7 +23,7 @@ Future<List<PhaseProgress>> phaseOverview(PhaseOverviewRef ref) async {
   if (schedule == null) return const [];
 
   final repo = ref.watch(programRepositoryProvider);
-  final today = DateTime.now().dayOnly;
+  final today = ref.watch(simulatedNowProvider).dayOnly;
   final todayStatus = schedule.entryFor(today);
 
   final list = <PhaseProgress>[];

@@ -6,7 +6,7 @@ part of 'streak_failure_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$streakFailureHash() => r'd2e0b7c81ce51988029dfe980adbb15ee08ec1d7';
+String _$streakFailureHash() => r'1871625b35cf593c903bb3e830e5d4e0d950d0c2';
 
 /// Detecta si la racha está rota AHORA: el primer día pasado de una fase activa
 /// que no quedó completo. Devuelve `null` si la racha sigue viva (o si aún no

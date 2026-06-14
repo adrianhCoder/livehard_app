@@ -3,7 +3,10 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../data/program_repository.dart';
+import '../domain/models/daily_record.dart';
+import '../domain/models/phase_schedule.dart';
 import '../domain/models/program_state.dart';
+import 'dev_clock.dart';
 import 'program_date_logic.dart';
 import 'program_providers.dart';
 
@@ -45,6 +48,9 @@ class ProgramController extends _$ProgramController {
   ProgramRepository get _repo => ref.read(programRepositoryProvider);
   ProgramDateLogic get _logic => ref.read(programDateLogicProvider);
 
+  /// Fecha "hoy" (respeta el reloj de desarrollo; en producción = hoy real).
+  DateTime get _now => ref.read(simulatedNowProvider);
+
   ProgramState _requireState() {
     final state = _repo.getState();
     if (state == null) {
@@ -55,7 +61,7 @@ class ProgramController extends _$ProgramController {
 
   /// Arranca el programa en la Fase 75 Hard. [startDate] por defecto es hoy.
   Future<void> startProgram({DateTime? startDate}) async {
-    await _repo.startProgram((startDate ?? DateTime.now()).dayOnly);
+    await _repo.startProgram((startDate ?? _now).dayOnly);
   }
 
   /// Termina el onboarding: ancla el 75 Hard y programa las Fases 1 y 2 (la
@@ -93,7 +99,7 @@ class ProgramController extends _$ProgramController {
   /// 30 días de descanso CONTADOS desde esta fecha (ver [ProgramDateLogic]).
   Future<void> markPhase1Completed({DateTime? now}) async {
     final state = _requireState();
-    state.phase1CompletedDate = (now ?? DateTime.now()).dayOnly;
+    state.phase1CompletedDate = (now ?? _now).dayOnly;
     await _repo.saveState(state);
   }
 
@@ -120,7 +126,7 @@ class ProgramController extends _$ProgramController {
     }
 
     state.currentPhase = next;
-    state.currentPhaseStartDate = (now ?? DateTime.now()).dayOnly;
+    state.currentPhaseStartDate = (now ?? _now).dayOnly;
     await _repo.saveState(state);
   }
 
@@ -128,7 +134,7 @@ class ProgramController extends _$ProgramController {
   /// Guarda el intento fallido (fase, día alcanzado y motivo opcional).
   Future<void> restartCurrentPhase({String? reason, DateTime? now}) async {
     final state = _requireState();
-    final today = (now ?? DateTime.now()).dayOnly;
+    final today = (now ?? _now).dayOnly;
 
     state.failedAttempts = [
       ...state.failedAttempts,
@@ -141,6 +147,103 @@ class ProgramController extends _$ProgramController {
     ];
     state.currentPhaseStartDate = today;
     await _repo.saveState(state);
+  }
+
+  /// **Solo dev:** borra todo (estado + registros) y devuelve la app al
+  /// onboarding. Útil para probar desde cero el flujo de racha rota.
+  Future<void> wipeEverythingForDev() async {
+    await _repo.wipeAll();
+  }
+
+  /// Fija el inicio de la próxima fase (Fase 1 o 2) en [date], validando contra
+  /// la ventana permitida ([ProgramDateLogic.optionsForNextPhase]). Sirve para
+  /// "Iniciar ahora" (date = hoy) y para "Ajustar fecha de inicio".
+  ///
+  /// Al mover la Fase 1, la Fase 2 se recoloca si quedó antes del descanso
+  /// mínimo. Lanza [ScheduleException] si la fecha cae fuera de la ventana o si
+  /// la fase no es ajustable (Fase 3 es estática).
+  Future<void> setPhaseStart({
+    required ProgramPhase phase,
+    required DateTime date,
+    DateTime? now,
+  }) async {
+    final state = _requireState();
+    final opts = _logic.optionsForNextPhase(state, phase, now: now ?? _now);
+
+    if (!opts.adjustable) {
+      throw ScheduleException([opts.note ?? 'Esta fase no se puede reprogramar.']);
+    }
+
+    final d = date.dayOnly;
+    if (opts.earliest != null && d.isBefore(opts.earliest!)) {
+      throw ScheduleException([
+        '${phase.label}: la fecha más temprana válida es ${_fmtDay(opts.earliest!)}.'
+      ]);
+    }
+    if (opts.latest != null && d.isAfter(opts.latest!)) {
+      throw ScheduleException([
+        '${phase.label}: la fecha más tardía válida es ${_fmtDay(opts.latest!)} '
+            '(para terminar antes de la Fase 3).'
+      ]);
+    }
+
+    switch (phase) {
+      case ProgramPhase.phase1:
+        state.phase1StartDate = d;
+        final minP2 = _logic.earliestPhase2StartFrom(d);
+        if (state.phase2StartDate == null ||
+            state.phase2StartDate!.isBefore(minP2)) {
+          state.phase2StartDate = minP2;
+        }
+      case ProgramPhase.phase2:
+        state.phase2StartDate = d;
+      default:
+        throw ArgumentError('No se puede fijar el inicio de ${phase.label}.');
+    }
+    await _repo.saveState(state);
+  }
+
+  static String _fmtDay(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Completa automáticamente TODOS los días anteriores a hoy de las fases
+  /// programadas (marca todas sus tareas). Es el "marcar días anteriores y
+  /// continuar": tras llamarlo, la racha deja de estar rota y la vista de HOY
+  /// vuelve a aparecer. No toca el día de hoy ni los futuros.
+  Future<void> completePastDays({DateTime? now}) async {
+    final state = _requireState();
+    final schedule = PhaseSchedule.tryFromState(state);
+    if (schedule == null) return;
+
+    final today = (now ?? _now).dayOnly;
+    final toSave = <DailyRecord>[];
+
+    for (final entry in schedule.phaseRanges) {
+      final phase = entry.key;
+      final range = entry.value;
+      if (!range.start.isBefore(today)) continue;
+
+      final tasks = PhaseRules.tasksFor(phase);
+      for (var n = 1; n <= range.lengthInDays; n++) {
+        final date = range.start.add(Duration(days: n - 1)).dayOnly;
+        if (!date.isBefore(today)) break; // hoy o futuro: no se tocan.
+
+        final record = _repo.getRecordForDate(date) ??
+            (DailyRecord()
+              ..date = date
+              ..phase = phase
+              ..dayNumber = n);
+        if (record.isComplete) continue; // ya estaba completo.
+        for (final t in tasks) {
+          record.setDone(t, true);
+        }
+        toSave.add(record);
+      }
+    }
+
+    if (toSave.isNotEmpty) {
+      await _repo.saveRecords(toSave);
+    }
   }
 
   /// Reinicia la Fase 1 o la Fase 2 tras romper la racha (modelo agendado).
@@ -167,7 +270,7 @@ class ProgramController extends _$ProgramController {
     }
 
     final state = _requireState();
-    final today = (now ?? DateTime.now()).dayOnly;
+    final today = (now ?? _now).dayOnly;
     final start = newStart.dayOnly;
 
     if (phase == ProgramPhase.phase1) {
@@ -223,7 +326,7 @@ class ProgramController extends _$ProgramController {
     DateTime? now,
   }) async {
     final state = _requireState();
-    final today = (now ?? DateTime.now()).dayOnly;
+    final today = (now ?? _now).dayOnly;
     final day1 = (newHard75Day1 ?? today).dayOnly;
 
     state.failedAttempts = [
@@ -253,7 +356,7 @@ class ProgramController extends _$ProgramController {
   /// (p. ej. ofrecer arrancar un programa nuevo con [startProgram]).
   Future<void> markYearFailed({String? reason, DateTime? now}) async {
     final state = _requireState();
-    final today = (now ?? DateTime.now()).dayOnly;
+    final today = (now ?? _now).dayOnly;
 
     state.yearFailed = true;
     state.failedAttempts = [

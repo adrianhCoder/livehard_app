@@ -6,23 +6,49 @@ import '../application/phase_overview_provider.dart';
 import '../application/program_controller.dart';
 import '../application/streak_failure_provider.dart';
 import '../domain/models/streak_failure.dart';
-import 'calendar_screen.dart';
 
 /// Pantalla bloqueante de "HAS FALLADO". Aparece en lugar de la checklist de HOY
 /// cuando [detectStreakFailure] encuentra un día pasado sin completar.
 ///
 /// Ofrece dos caminos, como la app de referencia:
-///  - **Continuar marcando los días anteriores**: abre el calendario para editar
-///    los registros pasados (por si en realidad sí cumpliste y olvidaste marcar).
+///  - **Marcar días anteriores y continuar**: completa automáticamente TODOS los
+///    días anteriores (por si en realidad sí cumpliste y olvidaste marcar) y
+///    vuelve a HOY.
 ///  - **Reiniciar**: lleva a la confirmación "START OVER". Fallar la Fase 3 es
 ///    especial: reinicia TODO el programa desde el 75 Hard.
-class FailureScreen extends StatelessWidget {
+class FailureScreen extends ConsumerStatefulWidget {
   const FailureScreen({super.key, required this.failure});
 
   final StreakFailure failure;
 
   @override
+  ConsumerState<FailureScreen> createState() => _FailureScreenState();
+}
+
+class _FailureScreenState extends ConsumerState<FailureScreen> {
+  bool _busy = false;
+
+  /// Marca de golpe todos los días anteriores y refresca la detección de racha.
+  /// Al limpiarse la racha, `HomeScreen` vuelve a mostrar la vista de HOY.
+  Future<void> _markPastAndContinue() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(programControllerProvider.notifier).completePastDays();
+      ref.invalidate(streakFailureProvider);
+      ref.invalidate(phaseOverviewProvider);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudieron marcar los días: $e')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final failure = widget.failure;
     final fullReset = failure.requiresFullReset;
     final dateLabel = DateFormat('EEEE, MMM d, yyyy').format(failure.date);
 
@@ -60,8 +86,8 @@ class FailureScreen extends StatelessWidget {
                 fullReset
                     ? 'Fallar la Fase 3 reinicia TODO el programa: vuelves al '
                         '75 Hard desde el Día 0.'
-                    : 'Tu racha se rompió. Puedes revisar los días anteriores o '
-                        'reiniciar la fase desde cero.',
+                    : 'Tu racha se rompió. Puedes dar por hechos los días '
+                        'anteriores o reiniciar la fase desde cero.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.red.shade200, fontSize: 15),
               ),
@@ -72,13 +98,18 @@ class FailureScreen extends StatelessWidget {
                   side: const BorderSide(color: Colors.white54),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CalendarScreen()),
-                ),
-                child: const Text(
-                  'Continuar marcando los días anteriores',
-                  style: TextStyle(fontSize: 16),
-                ),
+                onPressed: _busy ? null : _markPastAndContinue,
+                child: _busy
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text(
+                        'Marcar días anteriores y continuar',
+                        style: TextStyle(fontSize: 16),
+                      ),
               ),
               const SizedBox(height: 14),
               FilledButton(
@@ -86,11 +117,14 @@ class FailureScreen extends StatelessWidget {
                   backgroundColor: Colors.red,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => RestartConfirmScreen(failure: failure),
-                  ),
-                ),
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                RestartConfirmScreen(failure: failure),
+                          ),
+                        ),
                 child: Text(
                   fullReset ? 'Reiniciar todo el programa' : 'Reiniciar la fase',
                   style: const TextStyle(

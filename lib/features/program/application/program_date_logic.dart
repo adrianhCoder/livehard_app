@@ -24,6 +24,34 @@ class PhaseGate {
   final String? reason;
 }
 
+/// Opciones para (re)programar el inicio de la próxima fase desde la pantalla
+/// de descanso. La Fase 3 es estática: [adjustable] == false.
+class PhaseStartOptions {
+  const PhaseStartOptions({
+    required this.phase,
+    required this.adjustable,
+    required this.canStartToday,
+    this.earliest,
+    this.latest,
+    this.note,
+  });
+
+  final ProgramPhase phase;
+
+  /// `false` para la Fase 3 (fecha fija): no se puede iniciar ni mover.
+  final bool adjustable;
+
+  /// `true` si HOY es una fecha válida de inicio (habilita "Iniciar ahora").
+  final bool canStartToday;
+
+  /// Primera y última fecha seleccionable al ajustar (inclusive).
+  final DateTime? earliest;
+  final DateTime? latest;
+
+  /// Explicación legible (descanso restante, fecha fija, etc.).
+  final String? note;
+}
+
 /// Reglas de calendario del programa Live Hard. **Dart puro y sin estado**:
 /// recibe siempre las fechas (o el [ProgramState]) y un `now` inyectable para
 /// poder testear.
@@ -168,6 +196,88 @@ class ProgramDateLogic {
       latestDate: start,
       reason: 'Hoy es el día exacto para iniciar la Fase 3.',
     );
+  }
+
+  // ----------------------------------------------------------------
+  // Opciones de (re)programación de la PRÓXIMA fase (pantalla de descanso).
+  // ----------------------------------------------------------------
+
+  /// Calcula si la próxima [phase] se puede iniciar hoy y en qué ventana de
+  /// fechas se puede reprogramar, según las reglas vigentes:
+  ///  - Fase 1: desde hoy (el 75 Hard ya terminó), con tope para que quepan el
+  ///    descanso + la Fase 2 antes de la Fase 3.
+  ///  - Fase 2: mínimo [phase2RestDays] días de descanso tras la Fase 1, y debe
+  ///    terminar antes de la Fase 3.
+  ///  - Fase 3: **estática**, no es ajustable ([PhaseStartOptions.adjustable]
+  ///    == false).
+  PhaseStartOptions optionsForNextPhase(ProgramState state, ProgramPhase phase,
+      {DateTime? now}) {
+    final today = (now ?? DateTime.now()).dayOnly;
+
+    switch (phase) {
+      case ProgramPhase.phase1:
+        final restMin = earliestPhase1StartFor(state.programStartDate, now: now);
+        final earliest = restMin.isAfter(today) ? restMin : today;
+        // La Fase 1 debe empezar con margen para descanso (30) + Fase 2 (30).
+        final latest = mandatoryPhase3Start(state)
+            .subtract(Duration(days: phase2RestDays + ProgramPhase.phase2.durationDays + ProgramPhase.phase1.durationDays - 1));
+        final hasRoom = !earliest.isAfter(latest);
+        return PhaseStartOptions(
+          phase: phase,
+          adjustable: hasRoom,
+          canStartToday: hasRoom && !today.isAfter(latest),
+          earliest: earliest,
+          latest: latest,
+          note: hasRoom
+              ? null
+              : 'No hay espacio para la Fase 1 antes de la Fase 3.',
+        );
+
+      case ProgramPhase.phase2:
+        final p1 = state.phase1StartDate;
+        if (p1 == null) {
+          return PhaseStartOptions(
+            phase: phase,
+            adjustable: false,
+            canStartToday: false,
+            note: 'Primero programa la Fase 1.',
+          );
+        }
+        final restMin = earliestPhase2StartFrom(p1);
+        final earliest = restMin.isAfter(today) ? restMin : today;
+        final latest = latestPhase2StartFor(state.programStartDate);
+        final hasRoom = !earliest.isAfter(latest);
+        final restRemaining = today.daysUntil(restMin);
+        return PhaseStartOptions(
+          phase: phase,
+          adjustable: hasRoom,
+          canStartToday: hasRoom && !today.isBefore(restMin) && !today.isAfter(latest),
+          earliest: earliest,
+          latest: latest,
+          note: restRemaining > 0
+              ? 'Mínimo $phase2RestDays días de descanso: disponible desde el ${_fmt(restMin)} (faltan $restRemaining día[s]).'
+              : (hasRoom ? null : 'Ya no cabe la Fase 2 antes de la Fase 3.'),
+        );
+
+      case ProgramPhase.phase3:
+        final start = mandatoryPhase3Start(state);
+        return PhaseStartOptions(
+          phase: phase,
+          adjustable: false,
+          canStartToday: false,
+          earliest: start,
+          latest: start,
+          note: 'La Fase 3 tiene fecha fija (termina en el aniversario de tu '
+              'Día 1) y no se puede mover.',
+        );
+
+      case ProgramPhase.hard75:
+        return PhaseStartOptions(
+          phase: phase,
+          adjustable: false,
+          canStartToday: false,
+        );
+    }
   }
 
   // ----------------------------------------------------------------

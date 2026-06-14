@@ -72,6 +72,15 @@ class ProgramRepository {
     await _isar.writeTxn(() => _isar.dailyRecords.put(record));
   }
 
+  /// Guarda varios registros en una sola transacción (p. ej. el backfill que
+  /// completa de golpe todos los días anteriores).
+  Future<void> saveRecords(List<DailyRecord> records) async {
+    for (final r in records) {
+      r.date = r.date.dayOnly;
+    }
+    await _isar.writeTxn(() => _isar.dailyRecords.putAll(records));
+  }
+
   /// Todos los registros de una fase, ordenados por fecha ascendente.
   Future<List<DailyRecord>> recordsForPhase(ProgramPhase phase) =>
       _isar.dailyRecords.filter().phaseEqualTo(phase).sortByDate().findAll();
@@ -96,5 +105,14 @@ class ProgramRepository {
   /// (fallo de Fase 3 → se rehace todo desde el 75 Hard).
   Future<void> deleteAllRecords() async {
     await _isar.writeTxn(() => _isar.dailyRecords.clear());
+  }
+
+  /// **Solo dev:** borra el estado y TODOS los registros, dejando la base como
+  /// recién instalada (la app vuelve al onboarding).
+  Future<void> wipeAll() async {
+    await _isar.writeTxn(() async {
+      await _isar.dailyRecords.clear();
+      await _isar.programStates.clear();
+    });
   }
 }

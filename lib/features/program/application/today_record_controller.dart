@@ -4,6 +4,7 @@ import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../domain/models/daily_record.dart';
 import '../domain/models/phase_schedule.dart';
+import 'dev_clock.dart';
 import 'program_providers.dart';
 
 // Tras editar: dart run build_runner build --delete-conflicting-outputs
@@ -19,14 +20,14 @@ class TodayRecordController extends _$TodayRecordController {
   @override
   Stream<DailyRecord?> build() {
     final repo = ref.watch(programRepositoryProvider);
-    return repo.watchRecordForDate(DateTime.now());
+    return repo.watchRecordForDate(ref.watch(simulatedNowProvider));
   }
 
   /// Obtiene el registro de hoy si existe; si no, construye uno nuevo en memoria
   /// con la fase y el número de día derivados del [ProgramState] actual.
   DailyRecord _ensureTodayRecord() {
     final repo = ref.read(programRepositoryProvider);
-    final today = DateTime.now().dayOnly;
+    final today = ref.read(simulatedNowProvider).dayOnly;
 
     final existing = repo.getRecordForDate(today);
     if (existing != null) return existing;
