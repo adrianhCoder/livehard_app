@@ -81,11 +81,12 @@ lib/
         streak_failure.dart       # StreakFailure + detectStreakFailure (PURO, testeado)
         attempt_summary.dart      # (legacy, mock)
       application/
-        program_date_logic.dart   # reglas de fecha PURAS + validateSchedule (testeado)
-        program_controller.dart   # onboarding, avance, reinicios de racha (acciones)
+        program_date_logic.dart   # reglas de fecha PURAS + validateSchedule + optionsForNextPhase (testeado)
+        program_controller.dart   # onboarding, reinicios, setPhaseStart, completePastDays, wipe
         today_record_controller.dart  # registro de HOY (toggle tareas/notas/foto)
         phase_overview_provider.dart  # progreso real de todas las fases
         streak_failure_provider.dart  # detecta racha rota AHORA (desde Isar)
+        dev_clock.dart            # SOLO DEV: offset de días + simulatedNowProvider
         program_providers.dart    # isar, repo, programState (stream), date logic
         mock_data.dart            # mockProfile + seedSampleProgram(repo)
       data/program_repository.dart  # acceso a Isar (estado + registros + borrados)
@@ -108,14 +109,23 @@ test/unit/streak_failure_test.dart            # detección de racha rota
   con `PhaseSchedule.entryFor(...)`.
 - La lógica de fechas es **Dart puro con `now` inyectable** → testeable; no metas
   `DateTime.now()` directo en la lógica de negocio.
+- **Reloj de HOY**: la UI y los providers NO usan `DateTime.now()` directo; usan
+  `simulatedNowProvider` (= fecha real + offset de `DevClock`). En producción el
+  offset es 0. La barra dev (`_DevClockBar`, solo `kDebugMode`) permite ±días y
+  un **Wipe** (borra estado + registros → onboarding) para probar desde cero.
 - **Tras editar modelos Isar o providers**, corre `build_runner` (regenera `*.g.dart`,
   que SÍ se commitean).
 - El **perfil** del usuario todavía es mock (`mockProfile`); no hay store real aún.
 - **Racha rota**: `detectStreakFailure` busca el primer día PASADO de una fase sin
   completar (hoy nunca cuenta). Si lo hay, `HomeScreen` bloquea HOY con
-  `FailureScreen`. Dos salidas: (a) editar días pasados en el calendario (backfill),
-  (b) "START OVER" → `restartPhaseFrom` (Fase 1/2: reprograma + borra esa fase y las
+  `FailureScreen`. Dos salidas: (a) **Marcar días anteriores y continuar** →
+  `completePastDays` (completa de golpe todos los días pasados); (b) **Reiniciar**
+  → "START OVER" → `restartPhaseFrom` (Fase 1/2: reprograma + borra esa fase y las
   posteriores) o `restartEntireProgram` (Fase 3: reset total → vuelve a onboarding).
+  Nada se auto-completa: solo botones (`completePastDays`, `_setAll`).
+- **Pantalla de descanso** (`_ScheduleStatusView`): ofrece "Iniciar ahora" / "Ajustar
+  fecha" según `optionsForNextPhase` (Fase 2 exige 30 días de descanso; **Fase 3 es
+  estática, `adjustable == false`**). Aplica con `setPhaseStart` (valida la ventana).
 - Pendiente: store real de perfil de usuario.
 
 ## Memoria persistente

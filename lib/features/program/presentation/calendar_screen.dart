@@ -72,7 +72,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 _ProfileRow(profile: mockProfile),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 150,
+                  height: 168,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
