@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../data/program_repository.dart';
 import '../domain/models/daily_record.dart';
+import '../domain/models/power_list_item.dart';
 import '../domain/models/program_state.dart';
 import 'program_date_logic.dart';
 
@@ -14,7 +15,8 @@ part 'program_providers.g.dart';
 ///
 /// ```dart
 /// final dir = await getApplicationDocumentsDirectory();
-/// final isar = await Isar.open([DailyRecordSchema, ProgramStateSchema],
+/// final isar = await Isar.open(
+///     [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
 ///     directory: dir.path);
 /// runApp(ProviderScope(
 ///   overrides: [isarProvider.overrideWithValue(isar)],
@@ -29,7 +31,7 @@ Isar isar(IsarRef ref) =>
 Future<Isar> openIsar() async {
   final dir = await getApplicationDocumentsDirectory();
   return Isar.open(
-    [DailyRecordSchema, ProgramStateSchema],
+    [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
     directory: dir.path,
   );
 }

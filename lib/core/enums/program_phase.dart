@@ -72,6 +72,24 @@ enum DailyTask {
 class PhaseRules {
   const PhaseRules._();
 
+  /// Las 3 ranuras de la Power List, en orden de slot (1..3). Todas son
+  /// obligatorias en las fases que usan Power List (Fase 1 y 3).
+  static const List<DailyTask> powerListSlots = [
+    DailyTask.powerListTask1,
+    DailyTask.powerListTask2,
+    DailyTask.powerListTask3,
+  ];
+
+  /// Cuántas tareas de la Power List hay (todas obligatorias).
+  static const int powerListCount = 3;
+
+  /// Mapea un número de slot (1..3) a su [DailyTask] correspondiente.
+  static DailyTask powerListTaskForSlot(int slot) => powerListSlots[slot - 1];
+
+  /// `true` si la fase usa la Power List (Fase 1 y Fase 3).
+  static bool usesPowerList(ProgramPhase phase) =>
+      tasksFor(phase).contains(DailyTask.powerListTask1);
+
   // Reglas base de 75 Hard, compartidas por todas las fases.
   static const List<DailyTask> _base = [
     DailyTask.workout1,

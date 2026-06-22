@@ -12,7 +12,8 @@ String _$isarHash() => r'141cf705a4c29277c855fd995ccb0e0c7bea5812';
 ///
 /// ```dart
 /// final dir = await getApplicationDocumentsDirectory();
-/// final isar = await Isar.open([DailyRecordSchema, ProgramStateSchema],
+/// final isar = await Isar.open(
+///     [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
 ///     directory: dir.path);
 /// runApp(ProviderScope(
 ///   overrides: [isarProvider.overrideWithValue(isar)],

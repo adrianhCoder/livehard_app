@@ -62,6 +62,19 @@ Difieren por fase y están centralizados en `PhaseRules.tasksFor(phase)`
 - **Fase 3**: base + ducha fría + Power List + hablar con un extraño + acto de
   bondad (sin visualización).
 
+### Power List (tareas críticas del usuario)
+Confirmado con la doc oficial de Frisella: la Fase 2 **NO** lleva Power List
+(es idéntica al 75 Hard). La Power List son **3 tareas críticas** (todas
+obligatorias) que el usuario **define y mantiene día a día** hasta reemplazarlas
+(~21 días = hábito). Solo aplica a Fase 1 y Fase 3.
+- `PhaseRules.powerListCount` (3) = nº de ranuras; `powerListSlots` mapea
+  slot→`DailyTask`. Las 3 entran en `tasksFor`, así que bloquean la racha.
+- El texto vive en la colección Isar `PowerListItem` (slot 1-3, `active`,
+  `startDay`, `retiredDay`). Editar/reemplazar = retirar el actual + crear uno
+  nuevo con `startDay` fresco → la racha por tarea arranca de cero.
+- Racha por tarea: `power_list_logic.dart` (PURO, testeado). A los 21 días
+  (`kPowerListHabitDays`) la UI sugiere reemplazar la tarea.
+
 ## Mapa de archivos
 
 ```

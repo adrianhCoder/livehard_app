@@ -3,6 +3,7 @@ import 'package:isar/isar.dart';
 import '../../../core/enums/program_phase.dart';
 import '../../../core/utils/date_x.dart';
 import '../domain/models/daily_record.dart';
+import '../domain/models/power_list_item.dart';
 import '../domain/models/program_state.dart';
 
 /// Capa de acceso a datos sobre Isar. Encapsula TODAS las lecturas/escrituras
@@ -107,12 +108,62 @@ class ProgramRepository {
     await _isar.writeTxn(() => _isar.dailyRecords.clear());
   }
 
+  // ================================================================
+  // PowerListItem (tareas críticas definidas por el usuario)
+  // ================================================================
+
+  /// Todas las tareas de Power List vigentes, ordenadas por slot (1..5).
+  Future<List<PowerListItem>> activePowerListItems() => _isar.powerListItems
+      .filter()
+      .activeEqualTo(true)
+      .sortBySlot()
+      .findAll();
+
+  /// Observa las tareas vigentes en vivo (emite inmediatamente).
+  Stream<List<PowerListItem>> watchActivePowerListItems() => _isar
+      .powerListItems
+      .filter()
+      .activeEqualTo(true)
+      .sortBySlot()
+      .watch(fireImmediately: true);
+
+  /// Define o **reemplaza** el texto de la tarea en [slot]. Si ya había una
+  /// activa con texto distinto, se retira (conserva historial) y se crea una
+  /// nueva con [today] como `startDay` (la racha por tarea arranca de cero).
+  /// Si el texto no cambia, no hace nada.
+  Future<void> setPowerListText(int slot, String text, DateTime today) async {
+    final day = today.dayOnly;
+    await _isar.writeTxn(() async {
+      final current = await _activeForSlot(slot);
+      if (current != null && current.text == text) return;
+      if (current != null) {
+        current
+          ..active = false
+          ..retiredDay = day;
+        await _isar.powerListItems.put(current);
+      }
+      final fresh = PowerListItem()
+        ..slot = slot
+        ..text = text
+        ..startDay = day
+        ..active = true;
+      await _isar.powerListItems.put(fresh);
+    });
+  }
+
+  Future<PowerListItem?> _activeForSlot(int slot) => _isar.powerListItems
+      .filter()
+      .slotEqualTo(slot)
+      .activeEqualTo(true)
+      .findFirst();
+
   /// **Solo dev:** borra el estado y TODOS los registros, dejando la base como
   /// recién instalada (la app vuelve al onboarding).
   Future<void> wipeAll() async {
     await _isar.writeTxn(() async {
       await _isar.dailyRecords.clear();
       await _isar.programStates.clear();
+      await _isar.powerListItems.clear();
     });
   }
 }

@@ -11,6 +11,7 @@ import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/program/application/dev_clock.dart';
 import 'features/program/application/program_controller.dart';
 import 'features/program/application/program_date_logic.dart';
+import 'features/program/application/power_list_controller.dart';
 import 'features/program/application/program_providers.dart';
 import 'features/program/application/streak_failure_provider.dart';
 import 'features/program/application/today_record_controller.dart';
@@ -127,7 +128,11 @@ class _TodayView extends ConsumerWidget {
 
     final phase = status.phase!;
     final dayNumber = status.dayNumber!;
-    final tasks = PhaseRules.tasksFor(phase);
+    // La Power List se renderiza en su propia sección (texto del usuario +
+    // racha), así que la sacamos del listado genérico de tareas.
+    final tasks = PhaseRules.tasksFor(phase)
+        .where((t) => !PhaseRules.powerListSlots.contains(t))
+        .toList();
     final recordAsync = ref.watch(todayRecordControllerProvider);
     final dateLabel =
         '${phase.label} · ${DateFormat('MMM d, yyyy').format(now)}';
@@ -196,6 +201,9 @@ class _TodayView extends ConsumerWidget {
               ),
               const Divider(height: 1),
             ],
+
+            // ---- Sección POWER LIST (solo Fases 1 y 3) ----
+            if (PhaseRules.usesPowerList(phase)) const _PowerListSection(),
 
             // ---- Sección NOTES ----
             Padding(
@@ -339,6 +347,239 @@ class _TaskRow extends StatelessWidget {
   }
 }
 
+/// Sección "POWER LIST": tareas críticas que el usuario define y **mantiene
+/// día a día** hasta reemplazarlas. Muestra la racha por tarea y, a los ~21
+/// días, sugiere reemplazarla (ya es hábito). 3 obligatorias + hasta 2
+/// opcionales.
+class _PowerListSection extends ConsumerWidget {
+  const _PowerListSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewAsync = ref.watch(powerListControllerProvider);
+    final pl = ref.read(powerListControllerProvider.notifier);
+    final today = ref.read(todayRecordControllerProvider.notifier);
+
+    return viewAsync.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text('Error Power List: $e'),
+      ),
+      data: (slots) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                const Text('POWER LIST',
+                    style:
+                        TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                const SizedBox(width: 8),
+                Text('· ${PhaseRules.powerListCount} tareas críticas',
+                    style:
+                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+              ],
+            ),
+          ),
+          const Divider(
+              thickness: 1.5,
+              color: Colors.black87,
+              indent: 16,
+              endIndent: 16),
+          for (final slot in slots) ...[
+            _PowerListRow(
+              view: slot,
+              onToggle: slot.isDefined
+                  ? () => today.toggleTask(slot.task)
+                  : () => _editDialog(context, pl, slot.slot, null),
+              onEdit: () => _editDialog(context, pl, slot.slot, slot.text),
+            ),
+            const Divider(height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editDialog(BuildContext context, PowerListController pl,
+      int slot, String? initial) async {
+    final text = await _promptPowerListText(context, initial);
+    if (text == null || text.trim().isEmpty) return;
+    await pl.setText(slot, text);
+  }
+}
+
+/// Pide al usuario el texto de una tarea crítica. Devuelve `null` si cancela.
+Future<String?> _promptPowerListText(BuildContext context, String? initial) {
+  final controller = TextEditingController(text: initial ?? '');
+  final title =
+      initial == null ? 'Define tu tarea crítica' : 'Editar / reemplazar';
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'p. ej. Escribir 500 palabras de mi libro',
+            ),
+            onSubmitted: (v) => Navigator.of(ctx).pop(v),
+          ),
+          if (initial != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Cambiar el texto cuenta como una tarea nueva: la racha se '
+              'reinicia.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () => Navigator.of(ctx).pop(controller.text),
+          child: const Text('Guardar'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Una fila de la Power List: check + texto del usuario + racha 🔥 + acciones.
+class _PowerListRow extends StatelessWidget {
+  const _PowerListRow({
+    required this.view,
+    required this.onToggle,
+    required this.onEdit,
+  });
+
+  final PowerListSlotView view;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final defined = view.isDefined;
+    final done = view.doneToday;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Círculo de check (o "+" si la ranura está vacía).
+          GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: done ? Colors.red : Colors.transparent,
+                border: Border.all(
+                  color: done
+                      ? Colors.red
+                      : (defined ? Colors.grey.shade400 : Colors.grey.shade300),
+                  width: 2,
+                ),
+              ),
+              child: done
+                  ? const Icon(Icons.check, color: Colors.white, size: 24)
+                  : (defined
+                      ? null
+                      : Icon(Icons.add, color: Colors.grey.shade400, size: 22)),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  defined ? view.text! : 'Define tu tarea crítica ${view.slot}',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                    fontStyle: defined ? FontStyle.normal : FontStyle.italic,
+                    color: !defined
+                        ? Colors.grey.shade500
+                        : (done ? Colors.grey.shade500 : Colors.black87),
+                    decoration: done ? TextDecoration.lineThrough : null,
+                    decorationColor: Colors.grey.shade500,
+                    decorationThickness: 2,
+                  ),
+                ),
+                if (defined) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.local_fire_department,
+                          size: 16,
+                          color: view.streak > 0
+                              ? Colors.deepOrange
+                              : Colors.grey.shade400),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${view.streak} día${view.streak == 1 ? '' : 's'} seguidos',
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                  if (view.isHabit)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Text(
+                          '✔ Ya es hábito · toca ✎ para reemplazarla',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.green.shade800),
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          if (defined)
+            IconButton(
+              icon: Icon(Icons.edit, size: 20, color: Colors.grey.shade600),
+              onPressed: onEdit,
+              tooltip: 'Editar / reemplazar',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Vista para los días que no son de checklist: antes de empezar la Fase 1,
 /// en un descanso entre fases, o cuando ya se completó el año. En los descansos
 /// ofrece iniciar la próxima fase ahora o ajustar su fecha (salvo la Fase 3,
@@ -360,7 +601,7 @@ class _ScheduleStatusView extends ConsumerWidget {
     final opts = showActions
         ? ref.read(programDateLogicProvider).optionsForNextPhase(
               program,
-              nextPhase!,
+              nextPhase,
               now: ref.watch(simulatedNowProvider),
             )
         : null;
