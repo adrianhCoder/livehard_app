@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'core/enums/program_phase.dart';
+import 'core/theme/app_theme.dart';
 import 'core/utils/date_x.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 import 'features/program/application/dev_clock.dart';
@@ -43,12 +44,7 @@ class LiveHardApp extends StatelessWidget {
     return MaterialApp(
       title: 'LiveHard',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.white,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
+      theme: buildLiveHardTheme(),
       home: const HomeScreen(),
     );
   }
@@ -145,9 +141,10 @@ class _TodayView extends ConsumerWidget {
         return ListView(
           padding: EdgeInsets.zero,
           children: [
-            // ---- Encabezado: logo, DAY N, fecha, calendario ----
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            // ---- Encabezado HÉROE: logo, DAY N, fecha, calendario ----
+            Container(
+              decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -158,26 +155,29 @@ class _TodayView extends ConsumerWidget {
                         Text(
                           'DAY $dayNumber',
                           style: const TextStyle(
-                            fontSize: 40,
+                            fontSize: 44,
                             fontWeight: FontWeight.w900,
-                            color: Colors.black,
+                            color: Colors.white,
+                            letterSpacing: 1,
                             height: 1.0,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
-                          dateLabel,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade700,
+                          dateLabel.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFE9B8B8),
                           ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.calendar_month_outlined,
-                        size: 36, color: Colors.grey.shade800),
+                    icon: const Icon(Icons.calendar_month_outlined,
+                        size: 32, color: Colors.white),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                           builder: (_) => const CalendarScreen()),
@@ -186,7 +186,6 @@ class _TodayView extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(height: 1),
 
             // ---- Lista de tareas ----
             for (final task in tasks) ...[
@@ -212,14 +211,15 @@ class _TodayView extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'NOTES:',
+                    'NOTES',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      color: Colors.black,
+                      letterSpacing: 1.5,
+                      color: AppColors.text,
                     ),
                   ),
-                  const Divider(thickness: 1.5, color: Colors.black87),
+                  const Divider(thickness: 2, color: AppColors.red),
                   _NotesField(
                     key: const ValueKey('today-notes'),
                     initial: record?.notes ?? '',
@@ -283,9 +283,9 @@ class _TaskRow extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: done ? Colors.red : Colors.transparent,
+                color: done ? AppColors.red : Colors.transparent,
                 border: Border.all(
-                  color: done ? Colors.red : Colors.grey.shade400,
+                  color: done ? AppColors.red : Colors.white30,
                   width: 2,
                 ),
               ),
@@ -304,23 +304,22 @@ class _TaskRow extends StatelessWidget {
                   label,
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    color: done ? Colors.grey.shade500 : Colors.black87,
+                    fontWeight: FontWeight.w600,
+                    color: done ? AppColors.textMuted : AppColors.text,
                     decoration: done ? TextDecoration.lineThrough : null,
-                    decorationColor: Colors.grey.shade500,
+                    decorationColor: AppColors.textMuted,
                     decorationThickness: 2,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
+                const Row(
                   children: [
-                    Icon(Icons.add_alarm,
-                        size: 18, color: Colors.grey.shade500),
-                    const SizedBox(width: 6),
+                    Icon(Icons.add_alarm, size: 18, color: AppColors.textMuted),
+                    SizedBox(width: 6),
                     Text(
                       'Add Reminder',
                       style:
-                          TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                          TextStyle(fontSize: 14, color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -334,8 +333,8 @@ class _TaskRow extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade700,
-                  borderRadius: BorderRadius.circular(6),
+                  color: AppColors.red,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.add_a_photo,
                     color: Colors.white, size: 22),
@@ -372,27 +371,27 @@ class _PowerListSection extends ConsumerWidget {
       data: (slots) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                const Text('POWER LIST',
-                    style:
-                        TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                const SizedBox(width: 8),
+                Text('POWER LIST',
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        color: AppColors.text)),
+                SizedBox(width: 8),
                 Text('· ${PhaseRules.powerListCount} tareas críticas',
-                    style:
-                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.textMuted)),
               ],
             ),
           ),
           const Divider(
-              thickness: 1.5,
-              color: Colors.black87,
-              indent: 16,
-              endIndent: 16),
+              thickness: 2, color: AppColors.red, indent: 16, endIndent: 16),
           for (final slot in slots) ...[
             _PowerListRow(
               view: slot,
@@ -495,11 +494,11 @@ class _PowerListRow extends StatelessWidget {
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: done ? Colors.red : Colors.transparent,
+                color: done ? AppColors.red : Colors.transparent,
                 border: Border.all(
                   color: done
-                      ? Colors.red
-                      : (defined ? Colors.grey.shade400 : Colors.grey.shade300),
+                      ? AppColors.red
+                      : (defined ? Colors.white30 : Colors.white24),
                   width: 2,
                 ),
               ),
@@ -507,7 +506,8 @@ class _PowerListRow extends StatelessWidget {
                   ? const Icon(Icons.check, color: Colors.white, size: 24)
                   : (defined
                       ? null
-                      : Icon(Icons.add, color: Colors.grey.shade400, size: 22)),
+                      : const Icon(Icons.add,
+                          color: AppColors.textMuted, size: 22)),
             ),
           ),
           const SizedBox(width: 14),
@@ -519,13 +519,13 @@ class _PowerListRow extends StatelessWidget {
                   defined ? view.text! : 'Define tu tarea crítica ${view.slot}',
                   style: TextStyle(
                     fontSize: 17,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     fontStyle: defined ? FontStyle.normal : FontStyle.italic,
                     color: !defined
-                        ? Colors.grey.shade500
-                        : (done ? Colors.grey.shade500 : Colors.black87),
+                        ? AppColors.textMuted
+                        : (done ? AppColors.textMuted : AppColors.text),
                     decoration: done ? TextDecoration.lineThrough : null,
-                    decorationColor: Colors.grey.shade500,
+                    decorationColor: AppColors.textMuted,
                     decorationThickness: 2,
                   ),
                 ),
@@ -536,13 +536,13 @@ class _PowerListRow extends StatelessWidget {
                       Icon(Icons.local_fire_department,
                           size: 16,
                           color: view.streak > 0
-                              ? Colors.deepOrange
-                              : Colors.grey.shade400),
+                              ? AppColors.red
+                              : Colors.white30),
                       const SizedBox(width: 4),
                       Text(
                         '${view.streak} día${view.streak == 1 ? '' : 's'} seguidos',
-                        style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600),
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textMuted),
                       ),
                     ],
                   ),
@@ -551,16 +551,18 @@ class _PowerListRow extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.green.shade50,
+                          color: AppColors.red,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.green.shade300),
                         ),
-                        child: Text(
-                          '✔ Ya es hábito · toca ✎ para reemplazarla',
+                        child: const Text(
+                          '🔥 YA ES HÁBITO · TOCA ✎ PARA REEMPLAZARLA',
                           style: TextStyle(
-                              fontSize: 12, color: Colors.green.shade800),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: Colors.white),
                         ),
                       ),
                     ),
@@ -570,7 +572,7 @@ class _PowerListRow extends StatelessWidget {
           ),
           if (defined)
             IconButton(
-              icon: Icon(Icons.edit, size: 20, color: Colors.grey.shade600),
+              icon: const Icon(Icons.edit, size: 20, color: AppColors.textMuted),
               onPressed: onEdit,
               tooltip: 'Editar / reemplazar',
             ),
@@ -606,43 +608,61 @@ class _ScheduleStatusView extends ConsumerWidget {
             )
         : null;
 
-    return Stack(
-      children: [
-        Align(
-          alignment: Alignment.topRight,
-          child: IconButton(
-            icon: Icon(Icons.calendar_month_outlined,
-                size: 32, color: Colors.grey.shade800),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CalendarScreen()),
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topRight,
+            child: IconButton(
+              icon: const Icon(Icons.calendar_month_outlined,
+                  size: 30, color: Colors.white70),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CalendarScreen()),
+              ),
             ),
           ),
-        ),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 72, color: Colors.red),
-                const SizedBox(height: 20),
-                Text(title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
-                Text(subtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
-                if (opts != null) ...[
-                  const SizedBox(height: 28),
-                  SizedBox(width: 320, child: _PhaseStartActions(options: opts)),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _SpadeLogo(size: 60),
+                  const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.red.withValues(alpha: 0.15),
+                      border: Border.all(color: AppColors.red, width: 2),
+                    ),
+                    child: Icon(icon, size: 52, color: AppColors.red),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(title.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                          color: Colors.white)),
+                  const SizedBox(height: 10),
+                  Text(subtitle,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 16, color: Colors.white70)),
+                  if (opts != null) ...[
+                    const SizedBox(height: 32),
+                    SizedBox(
+                        width: 320, child: _PhaseStartActions(options: opts)),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -690,13 +710,13 @@ class _PhaseStartActions extends ConsumerWidget {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock_outline, size: 18, color: Colors.grey.shade600),
+          const Icon(Icons.lock_outline, size: 18, color: Colors.white54),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               o.note ?? 'Fecha fija.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
             ),
           ),
         ],
@@ -710,7 +730,7 @@ class _PhaseStartActions extends ConsumerWidget {
           Text(
             o.note!,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            style: const TextStyle(fontSize: 13, color: Colors.white70),
           ),
           const SizedBox(height: 12),
         ],
@@ -900,13 +920,13 @@ class _SpadeLogo extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             Icon(CupertinoIcons.suit_spade_fill,
-                size: size, color: Colors.black),
+                size: size, color: Colors.white),
             Positioned(
               top: size * 0.18,
               child: Text(
                 '75',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.red,
                   fontWeight: FontWeight.w900,
                   fontSize: size * 0.3,
                 ),
@@ -920,7 +940,7 @@ class _SpadeLogo extends StatelessWidget {
             fontWeight: FontWeight.w900,
             fontSize: size * 0.24,
             letterSpacing: 1,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
       ],
@@ -956,10 +976,11 @@ class _NotesFieldState extends State<_NotesField> {
       maxLines: null,
       minLines: 4,
       onChanged: widget.onSave,
-      style: const TextStyle(fontSize: 16),
+      style: const TextStyle(fontSize: 16, color: AppColors.text),
       decoration: const InputDecoration(
         border: InputBorder.none,
         hintText: 'Escribe tus notas del día…',
+        hintStyle: TextStyle(color: AppColors.textMuted),
       ),
     );
   }
