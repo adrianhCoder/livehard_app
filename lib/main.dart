@@ -812,6 +812,7 @@ class _DevClockBar extends ConsumerWidget {
               _DevButton(label: '−1d', onTap: () => clock.advance(-1)),
               _DevButton(label: '+1d', onTap: () => clock.advance(1)),
               _DevButton(label: '+10d', onTap: () => clock.advance(10)),
+              _DevButton(label: '+30d', onTap: () => clock.advance(30)),
               _DevButton(label: 'Reset', onTap: clock.reset),
               _DevButton(
                 label: 'Wipe',
