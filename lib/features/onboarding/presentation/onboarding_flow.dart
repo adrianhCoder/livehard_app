@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/utils/date_x.dart';
+import '../../program/application/dev_clock.dart';
 import '../../program/application/mock_data.dart';
 import '../../program/application/program_controller.dart';
 import '../../program/application/program_providers.dart';
@@ -62,12 +64,16 @@ class OnboardingFlow extends ConsumerWidget {
   }
 
   Future<void> _pickHard75Day1(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
+    final today = ref.read(simulatedNowProvider).dayOnly;
+    // El Día 1 del 75 Hard siempre está en el pasado (el 75 Hard ya se
+    // completó antes de usar la app), así que el último día seleccionable
+    // es ayer, nunca hoy ni el futuro.
+    final lastSelectable = today.subtract(const Duration(days: 1));
     final picked = await showDatePicker(
       context: context,
-      initialDate: now.subtract(const Duration(days: 80)),
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
+      initialDate: lastSelectable.subtract(const Duration(days: 79)),
+      firstDate: DateTime(today.year - 2),
+      lastDate: lastSelectable,
       helpText: 'Día 1 de tu 75 Hard',
     );
     if (picked == null || !context.mounted) return;
