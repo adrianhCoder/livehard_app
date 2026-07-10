@@ -26,7 +26,9 @@ reinicia. Corre como **app de escritorio** (Windows/macOS/Linux) y como
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # *.g.dart de riverpod
 flutter run -d windows          # escritorio (o -d macos / -d linux)
-flutter build web --release     # web; sirve build/web en un puerto cualquiera
+flutter build web --release --no-web-resources-cdn   # web; sirve build/web en un puerto
+# ⚠️ SIEMPRE con --no-web-resources-cdn: sin él, canvaskit se baja del CDN de
+# gstatic y las redes que lo bloquean ven pantalla blanca (pasó el 2026-07-10).
 flutter test                                                # 43 tests
 flutter analyze                 # 0 errores propios (solo infos en *.g.dart)
 ```
