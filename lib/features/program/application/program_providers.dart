@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -29,10 +30,11 @@ Isar isar(IsarRef ref) =>
 
 /// Abre Isar de forma autónoma (útil si prefieres no overridear en main).
 Future<Isar> openIsar() async {
-  final dir = await getApplicationDocumentsDirectory();
+  // En web, path_provider no aplica: Isar usa IndexedDB e ignora `directory`.
+  final directory = kIsWeb ? '' : (await getApplicationDocumentsDirectory()).path;
   return Isar.open(
     [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
-    directory: dir.path,
+    directory: directory,
   );
 }
 
