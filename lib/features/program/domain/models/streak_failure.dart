@@ -26,7 +26,7 @@ class StreakFailure {
 }
 
 /// Detecta la racha rota más temprana del calendario. **Dart puro y testeable**
-/// (con `now` inyectable, sin tocar Isar).
+/// (con `now` inyectable, sin tocar la base de datos).
 ///
 /// Recorre las fases programables en orden cronológico (Fase 1 → 2 → 3) y busca
 /// el primer día ESTRICTAMENTE anterior a hoy que cae dentro de una fase y que

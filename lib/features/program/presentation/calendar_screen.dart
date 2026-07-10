@@ -16,7 +16,7 @@ import '../domain/models/phase_progress.dart';
 import 'phase_schedule_screen.dart';
 
 /// Pantalla de progreso: tarjetas por fase (75 Hard + Fases 1-3) y el
-/// calendario de la fase seleccionada, todo con datos reales de Isar.
+/// calendario de la fase seleccionada, todo con datos reales de la base de datos.
 ///
 /// Los días totalmente completados se pintan en rojo; los parciales en ámbar;
 /// el día de hoy lleva borde. Tocar un día abre el detalle de su registro.
@@ -62,8 +62,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             }
 
             final defaultIdx = phases.indexWhere((p) => p.isCurrent);
-            final idx =
-                (_selected ?? (defaultIdx < 0 ? 0 : defaultIdx)).clamp(0, phases.length - 1);
+            final idx = (_selected ?? (defaultIdx < 0 ? 0 : defaultIdx))
+                .clamp(0, phases.length - 1);
             final current = phases[idx];
 
             return Column(
@@ -119,7 +119,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           title: 'Reprogramar fases',
           confirmLabel: 'Guardar',
           onConfirm: (p1, p2) async {
-            await ref.read(programControllerProvider.notifier).completeOnboarding(
+            await ref
+                .read(programControllerProvider.notifier)
+                .completeOnboarding(
                   hard75Day1: program.programStartDate,
                   phase1Start: p1,
                   phase2Start: p2,
@@ -157,9 +159,21 @@ class _DayDetailSheet extends ConsumerStatefulWidget {
 }
 
 class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
-  /// Crea (si hace falta) y devuelve el registro de este día.
-  DailyRecord _recordForDay() =>
-      ref.read(programRepositoryProvider).getRecordForDate(widget.date) ??
+  /// Stream del registro de este día, cacheado en el State: recrearlo en cada
+  /// build reiniciaría la suscripción (ConnectionState.waiting) y parpadearía.
+  late final Stream<DailyRecord?> _recordStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _recordStream =
+        ref.read(programRepositoryProvider).watchRecordForDate(widget.date);
+  }
+
+  /// Lee (o crea en memoria) el registro de este día, SIEMPRE desde la base
+  /// de datos para no pisar cambios concurrentes.
+  Future<DailyRecord> _recordForDay() async =>
+      await ref.read(programRepositoryProvider).getRecordForDate(widget.date) ??
       (DailyRecord()
         ..date = widget.date
         ..phase = widget.phase
@@ -167,14 +181,14 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
 
   Future<void> _persist(DailyRecord record) async {
     await ref.read(programRepositoryProvider).saveRecord(record);
-    // Refresca el calendario y la detección de racha rota.
+    // Refresca el calendario y la detección de racha rota; la propia sheet se
+    // repinta sola vía [_recordStream].
     ref.invalidate(phaseOverviewProvider);
     ref.invalidate(streakFailureProvider);
-    if (mounted) setState(() {});
   }
 
   Future<void> _toggle(DailyTask task) async {
-    final record = _recordForDay();
+    final record = await _recordForDay();
     record.setDone(task, !record.isDone(task));
     await _persist(record);
   }
@@ -182,7 +196,7 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
   /// Marca o desmarca TODAS las tareas de la fase para este día de una vez.
   /// Es el "completar día" del backfill: deja el día como completo (o vacío).
   Future<void> _setAll(bool done) async {
-    final record = _recordForDay();
+    final record = await _recordForDay();
     for (final t in PhaseRules.tasksFor(widget.phase)) {
       record.setDone(t, done);
     }
@@ -191,86 +205,92 @@ class _DayDetailSheetState extends ConsumerState<_DayDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final repo = ref.read(programRepositoryProvider);
-    final record = repo.getRecordForDate(widget.date);
     final tasks = PhaseRules.tasksFor(widget.phase);
-    final editable = !widget.date.dayOnly
-        .isAfter(ref.watch(simulatedNowProvider).dayOnly);
+    final editable =
+        !widget.date.dayOnly.isAfter(ref.watch(simulatedNowProvider).dayOnly);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('${widget.phase.label} · Día ${widget.day}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(DateFormat('EEEE, MMM d, yyyy').format(widget.date),
-              style: TextStyle(color: Colors.grey.shade700)),
-          const SizedBox(height: 16),
-          if (!editable && record == null)
-            const Text('Día futuro: sin registro todavía.',
-                style: TextStyle(color: Colors.grey))
-          else ...[
-            if (editable) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: (record?.isComplete ?? false)
-                        ? Colors.grey.shade600
-                        : Colors.red,
-                  ),
-                  onPressed: () => _setAll(!(record?.isComplete ?? false)),
-                  icon: Icon((record?.isComplete ?? false)
-                      ? Icons.remove_done
-                      : Icons.done_all),
-                  label: Text((record?.isComplete ?? false)
-                      ? 'Desmarcar día'
-                      : 'Completar día'),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            for (final t in tasks)
-              InkWell(
-                onTap: editable ? () => _toggle(t) : null,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      Icon(
-                        (record?.isDone(t) ?? false)
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        size: 22,
-                        color: (record?.isDone(t) ?? false)
-                            ? Colors.red
-                            : Colors.grey,
+    return StreamBuilder<DailyRecord?>(
+      stream: _recordStream,
+      builder: (context, snapshot) {
+        final record = snapshot.data;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${widget.phase.label} · Día ${widget.day}',
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(DateFormat('EEEE, MMM d, yyyy').format(widget.date),
+                  style: TextStyle(color: Colors.grey.shade700)),
+              const SizedBox(height: 16),
+              if (!editable && record == null)
+                const Text('Día futuro: sin registro todavía.',
+                    style: TextStyle(color: Colors.grey))
+              else ...[
+                if (editable) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: (record?.isComplete ?? false)
+                            ? Colors.grey.shade600
+                            : Colors.red,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(t.label)),
-                    ],
+                      onPressed: () => _setAll(!(record?.isComplete ?? false)),
+                      icon: Icon((record?.isComplete ?? false)
+                          ? Icons.remove_done
+                          : Icons.done_all),
+                      label: Text((record?.isComplete ?? false)
+                          ? 'Desmarcar día'
+                          : 'Completar día'),
+                    ),
                   ),
-                ),
-              ),
-            if (editable) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Toca una tarea para marcarla, o usa "Completar día" para '
-                'marcarlas todas.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-              ),
+                  const SizedBox(height: 12),
+                ],
+                for (final t in tasks)
+                  InkWell(
+                    onTap: editable ? () => _toggle(t) : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                            (record?.isDone(t) ?? false)
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            size: 22,
+                            color: (record?.isDone(t) ?? false)
+                                ? Colors.red
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(t.label)),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (editable) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Toca una tarea para marcarla, o usa "Completar día" para '
+                    'marcarlas todas.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                ],
+                if (record != null && record.notes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Notas:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(record.notes),
+                ],
+              ],
             ],
-            if (record != null && record.notes.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('Notas:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(record.notes),
-            ],
-          ],
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -405,12 +425,13 @@ class _PhaseCard extends StatelessWidget {
               ],
             ),
             const Spacer(),
-            Text('DAY 1: ${DateFormat('MMM d, yyyy').format(progress.startDate)}',
+            Text(
+                'DAY 1: ${DateFormat('MMM d, yyyy').format(progress.startDate)}',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
             const SizedBox(height: 2),
             Text('Completed ${progress.completedCount} Days',
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             if (progress.isCurrent)
               Padding(
                 padding: const EdgeInsets.only(top: 2),

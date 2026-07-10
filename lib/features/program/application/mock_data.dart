@@ -79,7 +79,7 @@ final List<AttemptSummary> mockAttempts = <AttemptSummary>[
   ),
 ];
 
-/// Siembra en Isar un programa de ejemplo (modo demo): 75 Hard terminado hace
+/// Siembra en la base de datos un programa de ejemplo (modo demo): 75 Hard terminado hace
 /// poco, Fase 1 en una semana, Fase 2 en su fecha más temprana y Fase 3 fija.
 /// Permite ver la app poblada sin pasar por el onboarding.
 Future<void> seedSampleProgram(ProgramRepository repo, {DateTime? now}) async {

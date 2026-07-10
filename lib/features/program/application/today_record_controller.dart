@@ -12,9 +12,10 @@ part 'today_record_controller.g.dart';
 
 /// Observa y muta el [DailyRecord] de HOY.
 ///
-/// `build` emite el registro de hoy en vivo desde Isar (o `null` mientras no
-/// exista todavía). Las mutaciones crean el registro de forma perezosa: solo
-/// se persiste cuando el usuario marca la primera tarea / nota / foto.
+/// `build` emite el registro de hoy en vivo desde la base de datos (o `null`
+/// mientras no exista todavía). Las mutaciones crean el registro de forma
+/// perezosa: solo se persiste cuando el usuario marca la primera tarea / nota
+/// / foto.
 @riverpod
 class TodayRecordController extends _$TodayRecordController {
   @override
@@ -25,11 +26,12 @@ class TodayRecordController extends _$TodayRecordController {
 
   /// Obtiene el registro de hoy si existe; si no, construye uno nuevo en memoria
   /// con la fase y el número de día derivados del [ProgramState] actual.
-  DailyRecord _ensureTodayRecord() {
+  /// Siempre relee de la base antes de mutar (evita pisar cambios concurrentes).
+  Future<DailyRecord> _ensureTodayRecord() async {
     final repo = ref.read(programRepositoryProvider);
     final today = ref.read(simulatedNowProvider).dayOnly;
 
-    final existing = repo.getRecordForDate(today);
+    final existing = await repo.getRecordForDate(today);
     if (existing != null) return existing;
 
     final program = ref.read(programStateProvider).valueOrNull;
@@ -52,27 +54,27 @@ class TodayRecordController extends _$TodayRecordController {
   /// Marca o desmarca una tarea de hoy y persiste el cambio.
   Future<void> setTask(DailyTask task, bool value) async {
     final repo = ref.read(programRepositoryProvider);
-    final record = _ensureTodayRecord()..setDone(task, value);
+    final record = (await _ensureTodayRecord())..setDone(task, value);
     await repo.saveRecord(record);
   }
 
   /// Alterna el estado de una tarea (útil para checkboxes/taps).
   Future<void> toggleTask(DailyTask task) async {
-    final record = _ensureTodayRecord();
+    final record = await _ensureTodayRecord();
     await setTask(task, !record.isDone(task));
   }
 
   /// Guarda las notas libres del día.
   Future<void> setNotes(String notes) async {
     final repo = ref.read(programRepositoryProvider);
-    final record = _ensureTodayRecord()..notes = notes;
+    final record = (await _ensureTodayRecord())..notes = notes;
     await repo.saveRecord(record);
   }
 
   /// Guarda la ruta local de la foto de progreso y marca la tarea como hecha.
   Future<void> setProgressPhoto(String imagePath) async {
     final repo = ref.read(programRepositoryProvider);
-    final record = _ensureTodayRecord()
+    final record = (await _ensureTodayRecord())
       ..imagePath = imagePath
       ..setDone(DailyTask.progressPhoto, true);
     await repo.saveRecord(record);

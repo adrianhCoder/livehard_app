@@ -7,13 +7,14 @@ part of 'today_record_controller.dart';
 // **************************************************************************
 
 String _$todayRecordControllerHash() =>
-    r'2a0472db96be9b4c588d46e4e3d3d805aded3160';
+    r'ec53c067bc79372fbafc6ac35209e14e62ebd6fb';
 
 /// Observa y muta el [DailyRecord] de HOY.
 ///
-/// `build` emite el registro de hoy en vivo desde Isar (o `null` mientras no
-/// exista todavía). Las mutaciones crean el registro de forma perezosa: solo
-/// se persiste cuando el usuario marca la primera tarea / nota / foto.
+/// `build` emite el registro de hoy en vivo desde la base de datos (o `null`
+/// mientras no exista todavía). Las mutaciones crean el registro de forma
+/// perezosa: solo se persiste cuando el usuario marca la primera tarea / nota
+/// / foto.
 ///
 /// Copied from [TodayRecordController].
 @ProviderFor(TodayRecordController)

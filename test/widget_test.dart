@@ -1,9 +1,10 @@
 // Smoke test mínimo: verifica que la pantalla de bienvenida se construye.
 //
-// La app real necesita una instancia de Isar (base de datos) inyectada vía
-// `isarProvider`. Para un test de widget puro la sobrescribimos por un fake
-// más adelante; por ahora este test solo comprueba que el árbol de widgets
-// de la vista inicial se renderiza sin lanzar excepciones.
+// La app real necesita una base de datos (sembast) inyectada vía
+// `databaseProvider`. Para un test de widget puro se puede sobrescribir con
+// una base en memoria (ver test/unit/program_repository_test.dart); por ahora
+// este test solo comprueba que el árbol de widgets de la vista inicial se
+// renderiza sin lanzar excepciones.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

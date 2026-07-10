@@ -22,15 +22,15 @@ import 'features/program/presentation/calendar_screen.dart';
 import 'features/program/presentation/failure_screen.dart';
 
 Future<void> main() async {
-  // Necesario antes de usar plugins (path_provider, Isar) en `main`.
+  // Necesario antes de usar plugins (path_provider) en `main`.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Abre la base de datos Isar una sola vez y la inyecta en Riverpod.
-  final isar = await openIsar();
+  // Abre la base de datos (sembast) una sola vez y la inyecta en Riverpod.
+  final db = await openAppDatabase();
 
   runApp(
     ProviderScope(
-      overrides: [isarProvider.overrideWithValue(isar)],
+      overrides: [databaseProvider.overrideWithValue(db)],
       child: const LiveHardApp(),
     ),
   );

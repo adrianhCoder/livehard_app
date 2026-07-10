@@ -1,7 +1,7 @@
 import '../../../../core/enums/program_phase.dart';
 import 'phase_schedule.dart';
 
-/// Progreso real de UNA fase, derivado de los [DailyRecord] guardados en Isar.
+/// Progreso real de UNA fase, derivado de los [DailyRecord] guardados en la base de datos.
 /// Alimenta las tarjetas y el calendario de la pantalla de progreso.
 class PhaseProgress {
   PhaseProgress({

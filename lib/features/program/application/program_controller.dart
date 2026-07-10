@@ -51,8 +51,8 @@ class ProgramController extends _$ProgramController {
   /// Fecha "hoy" (respeta el reloj de desarrollo; en producción = hoy real).
   DateTime get _now => ref.read(simulatedNowProvider);
 
-  ProgramState _requireState() {
-    final state = _repo.getState();
+  Future<ProgramState> _requireState() async {
+    final state = await _repo.getState();
     if (state == null) {
       throw StateError('No hay un programa iniciado.');
     }
@@ -84,7 +84,7 @@ class ProgramController extends _$ProgramController {
       throw ScheduleException(problems);
     }
 
-    final state = _repo.getState() ?? ProgramState();
+    final state = await _repo.getState() ?? ProgramState();
     state
       ..programStartDate = hard75Day1.dayOnly
       ..phase1StartDate = phase1Start.dayOnly
@@ -98,7 +98,7 @@ class ProgramController extends _$ProgramController {
   /// Marca la Fase 1 como completada hoy. Necesario porque la Fase 2 exige
   /// 30 días de descanso CONTADOS desde esta fecha (ver [ProgramDateLogic]).
   Future<void> markPhase1Completed({DateTime? now}) async {
-    final state = _requireState();
+    final state = await _requireState();
     state.phase1CompletedDate = (now ?? _now).dayOnly;
     await _repo.saveState(state);
   }
@@ -109,7 +109,7 @@ class ProgramController extends _$ProgramController {
   /// (Fase 2: descanso de 30 días; Fase 3: fecha exacta) y hoy no la cumple.
   /// Lanza [StateError] si ya se está en la última fase.
   Future<void> advanceToNextPhase({DateTime? now}) async {
-    final state = _requireState();
+    final state = await _requireState();
     final next = state.currentPhase.next;
     if (next == null) {
       throw StateError('Ya estás en la última fase del programa.');
@@ -133,7 +133,7 @@ class ProgramController extends _$ProgramController {
   /// Registra que se rompió la racha y reinicia la fase ACTUAL desde hoy.
   /// Guarda el intento fallido (fase, día alcanzado y motivo opcional).
   Future<void> restartCurrentPhase({String? reason, DateTime? now}) async {
-    final state = _requireState();
+    final state = await _requireState();
     final today = (now ?? _now).dayOnly;
 
     state.failedAttempts = [
@@ -167,7 +167,7 @@ class ProgramController extends _$ProgramController {
     required DateTime date,
     DateTime? now,
   }) async {
-    final state = _requireState();
+    final state = await _requireState();
     final opts = _logic.optionsForNextPhase(state, phase, now: now ?? _now);
 
     if (!opts.adjustable) {
@@ -211,7 +211,7 @@ class ProgramController extends _$ProgramController {
   /// continuar": tras llamarlo, la racha deja de estar rota y la vista de HOY
   /// vuelve a aparecer. No toca el día de hoy ni los futuros.
   Future<void> completePastDays({DateTime? now}) async {
-    final state = _requireState();
+    final state = await _requireState();
     final schedule = PhaseSchedule.tryFromState(state);
     if (schedule == null) return;
 
@@ -228,7 +228,7 @@ class ProgramController extends _$ProgramController {
         final date = range.start.add(Duration(days: n - 1)).dayOnly;
         if (!date.isBefore(today)) break; // hoy o futuro: no se tocan.
 
-        final record = _repo.getRecordForDate(date) ??
+        final record = await _repo.getRecordForDate(date) ??
             (DailyRecord()
               ..date = date
               ..phase = phase
@@ -269,7 +269,7 @@ class ProgramController extends _$ProgramController {
           'restartPhaseFrom solo aplica a Fase 1 o Fase 2 (recibido: $phase).');
     }
 
-    final state = _requireState();
+    final state = await _requireState();
     final today = (now ?? _now).dayOnly;
     final start = newStart.dayOnly;
 
@@ -325,7 +325,7 @@ class ProgramController extends _$ProgramController {
     String? reason,
     DateTime? now,
   }) async {
-    final state = _requireState();
+    final state = await _requireState();
     final today = (now ?? _now).dayOnly;
     final day1 = (newHard75Day1 ?? today).dayOnly;
 
@@ -355,7 +355,7 @@ class ProgramController extends _$ProgramController {
   /// No reinicia fechas automáticamente; eso lo decide el flujo de la UI
   /// (p. ej. ofrecer arrancar un programa nuevo con [startProgram]).
   Future<void> markYearFailed({String? reason, DateTime? now}) async {
-    final state = _requireState();
+    final state = await _requireState();
     final today = (now ?? _now).dayOnly;
 
     state.yearFailed = true;

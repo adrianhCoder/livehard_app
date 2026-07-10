@@ -1,56 +1,44 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:sembast/sembast.dart';
 
+import '../data/db_factory_io.dart'
+    if (dart.library.js_interop) '../data/db_factory_web.dart';
 import '../data/program_repository.dart';
-import '../domain/models/daily_record.dart';
-import '../domain/models/power_list_item.dart';
 import '../domain/models/program_state.dart';
 import 'program_date_logic.dart';
 
 // Tras editar: dart run build_runner build --delete-conflicting-outputs
 part 'program_providers.g.dart';
 
-/// Instancia única de Isar. Se inicializa una sola vez en `main()`:
+/// Instancia única de la base de datos (sembast). Se inicializa una sola vez
+/// en `main()`:
 ///
 /// ```dart
-/// final dir = await getApplicationDocumentsDirectory();
-/// final isar = await Isar.open(
-///     [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
-///     directory: dir.path);
+/// final db = await openAppDatabase();
 /// runApp(ProviderScope(
-///   overrides: [isarProvider.overrideWithValue(isar)],
+///   overrides: [databaseProvider.overrideWithValue(db)],
 ///   child: const LiveHardApp(),
 /// ));
 /// ```
 @Riverpod(keepAlive: true)
-Isar isar(IsarRef ref) =>
-    throw UnimplementedError('Sobrescribe isarProvider en main() con la instancia abierta.');
+Database database(DatabaseRef ref) => throw UnimplementedError(
+    'Sobrescribe databaseProvider en main() con la base de datos abierta.');
 
-/// Abre Isar de forma autónoma (útil si prefieres no overridear en main).
-Future<Isar> openIsar() async {
-  // En web, path_provider no aplica: Isar usa IndexedDB e ignora `directory`.
-  final directory = kIsWeb ? '' : (await getApplicationDocumentsDirectory()).path;
-  return Isar.open(
-    [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
-    directory: directory,
-  );
-}
+/// Abre la base de datos de la plataforma: archivo en escritorio/móvil,
+/// IndexedDB en Flutter Web (resuelto por import condicional).
+Future<Database> openAppDatabase() => openPlatformDatabase();
 
 /// Servicio de reglas de calendario (Dart puro, sin estado).
 @Riverpod(keepAlive: true)
 ProgramDateLogic programDateLogic(ProgramDateLogicRef ref) =>
     const ProgramDateLogic();
 
-/// Repositorio de datos (acceso a Isar). Vive tanto como la app.
+/// Repositorio de datos (acceso a sembast). Vive tanto como la app.
 @Riverpod(keepAlive: true)
 ProgramRepository programRepository(ProgramRepositoryRef ref) =>
-    ProgramRepository(ref.watch(isarProvider));
+    ProgramRepository(ref.watch(databaseProvider));
 
-/// Estado del programa observado en vivo desde Isar (singleton id == 1).
+/// Estado del programa observado en vivo (singleton id == 1).
 @riverpod
-Stream<ProgramState?> programState(ProgramStateRef ref) {
-  final isar = ref.watch(isarProvider);
-  return isar.programStates.watchObject(1, fireImmediately: true);
-}
+Stream<ProgramState?> programState(ProgramStateRef ref) =>
+    ref.watch(programRepositoryProvider).watchState();

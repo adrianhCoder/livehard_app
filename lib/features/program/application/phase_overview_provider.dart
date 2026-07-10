@@ -11,7 +11,7 @@ import 'program_providers.dart';
 part 'phase_overview_provider.g.dart';
 
 /// Progreso real de todas las fases (75 Hard + Fases 1-3) calculado desde el
-/// [ProgramState] y los [DailyRecord] de Isar. Lo consume la pantalla de
+/// [ProgramState] y los [DailyRecord] persistidos. Lo consume la pantalla de
 /// progreso. Es autoDispose: se recalcula cada vez que se abre la pantalla, así
 /// refleja las tareas marcadas durante la sesión.
 @riverpod

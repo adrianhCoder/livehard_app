@@ -21,4 +21,18 @@ extension DateX on DateTime {
     final lastDay = DateTime(year + years, m + 1, 0).day;
     return DateTime(year + years, m, d > lastDay ? lastDay : d);
   }
+
+  /// Clave de persistencia a nivel de día: `'yyyy-MM-dd'`. Su orden
+  /// lexicográfico coincide con el cronológico (sirve para rangos en la base
+  /// de datos) y, al truncar la hora, normaliza a día de facto al guardar.
+  String get dayKey => '${year.toString().padLeft(4, '0')}-'
+      '${month.toString().padLeft(2, '0')}-'
+      '${day.toString().padLeft(2, '0')}';
 }
+
+/// Inversa de [DateX.dayKey]: reconstruye la fecha (medianoche local).
+DateTime parseDayKey(String key) => DateTime.parse(key);
+
+/// Como [parseDayKey] pero tolera `null` (campos de fecha opcionales).
+DateTime? parseDayKeyOrNull(String? key) =>
+    key == null ? null : DateTime.parse(key);

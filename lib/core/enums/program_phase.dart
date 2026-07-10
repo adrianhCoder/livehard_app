@@ -1,7 +1,8 @@
 /// Las 4 fases del programa Live Hard.
 ///
-/// El orden del enum importa: Isar persiste el índice ordinal, así que
-/// **nunca reordenes ni borres valores** una vez en producción (solo añade al final).
+/// Se persiste el **nombre** del valor (`phase.name`, ver `toMap` de los
+/// modelos), así que reordenar es seguro pero **nunca renombres ni borres
+/// valores** una vez en producción (`values.byName` lanzaría al leer datos viejos).
 enum ProgramPhase {
   hard75,
   phase1,

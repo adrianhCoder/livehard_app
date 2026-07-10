@@ -6,13 +6,17 @@ Contexto del proyecto para Claude Code. Lee esto antes de trabajar.
 
 App Flutter de rendición de cuentas diaria: clon de **75 Hard** + el programa
 **Live Hard** (4 fases). El usuario marca tareas diarias; si falla, la racha se
-reinicia. Se ejecuta como **app de escritorio de Windows** (Android no instalado).
+reinicia. Corre como **app de escritorio** (Windows/macOS/Linux) y como
+**Flutter Web** (Android no instalado).
 
 ## Stack
 
-- **Flutter** (SDK Dart `^3.5.0`). Flutter 3.44.1 en `C:\src\flutter` (en PATH).
+- **Flutter** (SDK Dart `^3.5.0`; probado con Flutter 3.44.x).
 - **Riverpod** con generador de código (`riverpod_annotation` + `riverpod_generator`).
-- **Isar** (base de datos local NoSQL, índices nativos sobre `DateTime`).
+- **sembast** (base de datos local documental y reactiva, Dart puro):
+  archivo `livehard.db` en escritorio/móvil, **IndexedDB** en web
+  (`sembast_web`, elegido por import condicional en `program_providers.dart`).
+  Migrada desde Isar 3, que no compila a web (dart:ffi + literales int64).
 - `image_picker`, `path_provider`, `intl`.
 - Arquitectura **feature-first**.
 
@@ -20,20 +24,29 @@ reinicia. Se ejecuta como **app de escritorio de Windows** (Android no instalado
 
 ```bash
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # genera los *.g.dart
-flutter run -d windows
-flutter test                                                # 15 tests
-flutter analyze                                             # 0 errores propios
+dart run build_runner build --delete-conflicting-outputs   # *.g.dart de riverpod
+flutter run -d windows          # escritorio (o -d macos / -d linux)
+flutter build web --release     # web; sirve build/web en un puerto cualquiera
+flutter test                                                # 43 tests
+flutter analyze                 # 0 errores propios (solo infos en *.g.dart)
 ```
 
-Requiere **Modo Desarrollador** de Windows (symlinks de plugins).
+En Windows requiere **Modo Desarrollador** (symlinks de plugins).
 
-### ⚠️ Conflicto de dependencias conocido
-`isar_generator` 3.x exige `analyzer <6`, mientras `custom_lint`/`riverpod_lint`
-exigen uno nuevo. **Solución:** `custom_lint` y `riverpod_lint` están comentados
-en `dev_dependencies` (no se necesitan para ejecutar). Resuelve a `analyzer 5.13`.
-Por eso `flutter analyze` muestra ~16 warnings **solo en archivos `*.g.dart`**
-(`ProviderRef` deprecado, APIs `*ByIndex` experimentales de Isar): son benignos.
+### Persistencia (reglas importantes)
+- Los modelos **no usan codegen**: serializan a mano con `toMap()`/`fromMap()`.
+  build_runner solo regenera los providers de riverpod.
+- Las fechas se persisten como string `'yyyy-MM-dd'` (`DateX.dayKey`): el orden
+  lexicográfico == cronológico, así funcionan los rangos.
+- Los enums se persisten por **nombre** (`.name`): reordenar es seguro,
+  **renombrar valores está prohibido** (rompería datos existentes).
+- Un solo `DailyRecord` por fecha: el repositorio hace **upsert por fecha**
+  (también en `saveRecords` bulk).
+- Los datos de instalaciones viejas con Isar NO se migran (la app arranca
+  limpia); el archivo `.isar` viejo ya no se puede leer sin la dependencia.
+- `custom_lint`/`riverpod_lint` siguen comentados en `dev_dependencies`; el
+  conflicto original con `isar_generator` ya no existe — reactivarlos es un
+  follow-up pendiente.
 
 ## Modelo de negocio (4 fases)
 
@@ -69,7 +82,7 @@ obligatorias) que el usuario **define y mantiene día a día** hasta reemplazarl
 (~21 días = hábito). Solo aplica a Fase 1 y Fase 3.
 - `PhaseRules.powerListCount` (3) = nº de ranuras; `powerListSlots` mapea
   slot→`DailyTask`. Las 3 entran en `tasksFor`, así que bloquean la racha.
-- El texto vive en la colección Isar `PowerListItem` (slot 1-3, `active`,
+- El texto vive en la colección `PowerListItem` (slot 1-3, `active`,
   `startDay`, `retiredDay`). Editar/reemplazar = retirar el actual + crear uno
   nuevo con `startDay` fresco → la racha por tarea arranca de cero.
 - Racha por tarea: `power_list_logic.dart` (PURO, testeado). A los 21 días
@@ -98,11 +111,14 @@ lib/
         program_controller.dart   # onboarding, reinicios, setPhaseStart, completePastDays, wipe
         today_record_controller.dart  # registro de HOY (toggle tareas/notas/foto)
         phase_overview_provider.dart  # progreso real de todas las fases
-        streak_failure_provider.dart  # detecta racha rota AHORA (desde Isar)
+        streak_failure_provider.dart  # detecta racha rota AHORA (desde la DB)
         dev_clock.dart            # SOLO DEV: offset de días + simulatedNowProvider
-        program_providers.dart    # isar, repo, programState (stream), date logic
+        program_providers.dart    # database, repo, programState (stream), date logic, openAppDatabase
         mock_data.dart            # mockProfile + seedSampleProgram(repo)
-      data/program_repository.dart  # acceso a Isar (estado + registros + borrados)
+      data/
+        program_repository.dart   # acceso a sembast (estado + registros + power list)
+        db_factory_io.dart        # apertura en archivo (escritorio/móvil)
+        db_factory_web.dart       # apertura en IndexedDB (web); import condicional
       presentation/
         calendar_screen.dart      # progreso: tarjetas + calendario (días pasados editables)
         failure_screen.dart       # "HAS FALLADO" + confirmación "START OVER"
@@ -111,6 +127,7 @@ lib/
   main.dart                       # entrypoint + HomeScreen + vista de HOY
 test/unit/program_date_logic_test.dart        # reglas de fecha + PhaseSchedule
 test/unit/streak_failure_test.dart            # detección de racha rota
+test/unit/program_repository_test.dart        # repositorio sobre sembast en memoria
 ```
 
 ## Convenciones / notas
@@ -126,8 +143,9 @@ test/unit/streak_failure_test.dart            # detección de racha rota
   `simulatedNowProvider` (= fecha real + offset de `DevClock`). En producción el
   offset es 0. La barra dev (`_DevClockBar`, solo `kDebugMode`) permite ±días y
   un **Wipe** (borra estado + registros → onboarding) para probar desde cero.
-- **Tras editar modelos Isar o providers**, corre `build_runner` (regenera `*.g.dart`,
-  que SÍ se commitean).
+- **Tras editar providers de riverpod**, corre `build_runner` (regenera `*.g.dart`,
+  que SÍ se commitean). Los modelos ya no usan codegen: si añades un campo,
+  actualiza su `toMap()`/`fromMap()` a mano (con default defensivo al leer).
 - El **perfil** del usuario todavía es mock (`mockProfile`); no hay store real aún.
 - **Racha rota**: `detectStreakFailure` busca el primer día PASADO de una fase sin
   completar (hoy nunca cuenta). Si lo hay, `HomeScreen` bloquea HOY con

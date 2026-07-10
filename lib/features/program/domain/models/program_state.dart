@@ -1,16 +1,12 @@
-import 'package:isar/isar.dart';
-
 import '../../../../core/enums/program_phase.dart';
-
-part 'program_state.g.dart';
+import '../../../../core/utils/date_x.dart';
 
 /// Estado global del recorrido del usuario. Se espera un único documento
 /// (singleton) con [id] == 1. Guarda la fecha de inicio del programa,
 /// la fase actual y el historial de intentos fallidos.
-@collection
 class ProgramState {
   /// ID fijo: solo existe una instancia de estado por usuario/dispositivo.
-  Id id = 1;
+  int id = 1;
 
   /// Día 1 del 75 Hard original. Es el ancla para el cálculo del aniversario
   /// que determina la fecha obligatoria de la Fase 3.
@@ -34,7 +30,6 @@ class ProgramState {
 
   /// Fase en curso. **Legacy/secundario**: se conserva para no romper el flujo
   /// de avance en vivo; la vista de hoy usa [PhaseSchedule] en su lugar.
-  @enumerated
   ProgramPhase currentPhase = ProgramPhase.hard75;
 
   /// Día 1 de la fase ACTUAL en el modelo legacy de avance en vivo.
@@ -50,14 +45,49 @@ class ProgramState {
 
   /// Historial de intentos fallidos (objetos embebidos).
   List<FailedAttempt> failedAttempts = [];
+
+  // -----------------------------------------------------------------
+  // Serialización sembast. El `id` NO viaja en el map: la clave del record
+  // (fija en 1) es la fuente de verdad y `fromMap` la asigna al leer.
+  // -----------------------------------------------------------------
+
+  Map<String, Object?> toMap() => {
+        'programStartDate': programStartDate.dayKey,
+        'onboardingComplete': onboardingComplete,
+        'phase1StartDate': phase1StartDate?.dayKey,
+        'phase2StartDate': phase2StartDate?.dayKey,
+        'currentPhase': currentPhase.name,
+        'currentPhaseStartDate': currentPhaseStartDate.dayKey,
+        'phase1CompletedDate': phase1CompletedDate?.dayKey,
+        'yearFailed': yearFailed,
+        'failedAttempts': [for (final a in failedAttempts) a.toMap()],
+      };
+
+  /// Defaults defensivos en los campos opcionales: permite añadir campos al
+  /// esquema sin escribir migraciones. La lista de intentos se materializa en
+  /// una lista mutable NUEVA (los snapshots de sembast son inmutables).
+  static ProgramState fromMap(int id, Map<String, Object?> map) => ProgramState()
+    ..id = id
+    ..programStartDate = parseDayKey(map['programStartDate']! as String)
+    ..onboardingComplete = map['onboardingComplete'] as bool? ?? false
+    ..phase1StartDate = parseDayKeyOrNull(map['phase1StartDate'] as String?)
+    ..phase2StartDate = parseDayKeyOrNull(map['phase2StartDate'] as String?)
+    ..currentPhase = ProgramPhase.values.byName(map['currentPhase']! as String)
+    ..currentPhaseStartDate =
+        parseDayKey(map['currentPhaseStartDate']! as String)
+    ..phase1CompletedDate =
+        parseDayKeyOrNull(map['phase1CompletedDate'] as String?)
+    ..yearFailed = map['yearFailed'] as bool? ?? false
+    ..failedAttempts = [
+      for (final m in map['failedAttempts'] as List? ?? const [])
+        FailedAttempt.fromMap((m as Map).cast<String, Object?>()),
+    ];
 }
 
 /// Un intento fallido: qué fase, cuándo falló y a qué día había llegado.
-@embedded
 class FailedAttempt {
   late DateTime failedAt;
 
-  @enumerated
   late ProgramPhase phase;
 
   /// Día de la fase en el que se rompió la racha.
@@ -74,4 +104,17 @@ class FailedAttempt {
     required this.dayReached,
     this.reason,
   });
+
+  Map<String, Object?> toMap() => {
+        'failedAt': failedAt.dayKey,
+        'phase': phase.name,
+        'dayReached': dayReached,
+        'reason': reason,
+      };
+
+  static FailedAttempt fromMap(Map<String, Object?> map) => FailedAttempt()
+    ..failedAt = parseDayKey(map['failedAt']! as String)
+    ..phase = ProgramPhase.values.byName(map['phase']! as String)
+    ..dayReached = (map['dayReached'] as num?)?.toInt() ?? 0
+    ..reason = map['reason'] as String?;
 }

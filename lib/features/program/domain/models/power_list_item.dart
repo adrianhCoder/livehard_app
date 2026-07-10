@@ -1,7 +1,4 @@
-import 'package:isar/isar.dart';
-
-// Tras editar este archivo corre:  dart run build_runner build
-part 'power_list_item.g.dart';
+import '../../../../core/utils/date_x.dart';
 
 /// Una tarea crítica de la **Power List** definida por el usuario.
 ///
@@ -11,13 +8,12 @@ part 'power_list_item.g.dart';
 /// preservar el historial, "editar" una tarea NO muta este registro: se
 /// **retira** el actual ([active] = false, [retiredDay]) y se crea uno nuevo
 /// con un [startDay] fresco, de modo que la racha por tarea arranca de cero.
-@collection
 class PowerListItem {
-  Id id = Isar.autoIncrement;
+  /// Clave del record en sembast (`null` hasta la primera persistencia).
+  int? id;
 
   /// Posición en la lista (1..5). Las 3 primeras son obligatorias en las
   /// fases que usan Power List; las 2 últimas son opcionales.
-  @Index()
   late int slot;
 
   /// El texto de la tarea crítica, tal como lo escribió el usuario.
@@ -29,9 +25,30 @@ class PowerListItem {
 
   /// `true` mientras la tarea está vigente. Solo puede haber UN ítem activo
   /// por [slot]; los retirados se conservan como historial.
-  @Index()
   bool active = true;
 
   /// Día en que se retiró (null mientras siga activa).
   DateTime? retiredDay;
+
+  // -----------------------------------------------------------------
+  // Serialización sembast. El `id` NO viaja en el map: la clave del record
+  // es la fuente de verdad y `fromMap` la asigna al leer.
+  // -----------------------------------------------------------------
+
+  Map<String, Object?> toMap() => {
+        'slot': slot,
+        'text': text,
+        'startDay': startDay.dayKey,
+        'active': active,
+        'retiredDay': retiredDay?.dayKey,
+      };
+
+  static PowerListItem fromMap(int id, Map<String, Object?> map) =>
+      PowerListItem()
+        ..id = id
+        ..slot = (map['slot']! as num).toInt()
+        ..text = map['text'] as String? ?? ''
+        ..startDay = parseDayKey(map['startDay']! as String)
+        ..active = map['active'] as bool? ?? true
+        ..retiredDay = parseDayKeyOrNull(map['retiredDay'] as String?);
 }

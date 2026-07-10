@@ -6,33 +6,31 @@ part of 'program_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$isarHash() => r'141cf705a4c29277c855fd995ccb0e0c7bea5812';
+String _$databaseHash() => r'5e5344f7fc09ef502ca00b06e90df9490c706d99';
 
-/// Instancia única de Isar. Se inicializa una sola vez en `main()`:
+/// Instancia única de la base de datos (sembast). Se inicializa una sola vez
+/// en `main()`:
 ///
 /// ```dart
-/// final dir = await getApplicationDocumentsDirectory();
-/// final isar = await Isar.open(
-///     [DailyRecordSchema, ProgramStateSchema, PowerListItemSchema],
-///     directory: dir.path);
+/// final db = await openAppDatabase();
 /// runApp(ProviderScope(
-///   overrides: [isarProvider.overrideWithValue(isar)],
+///   overrides: [databaseProvider.overrideWithValue(db)],
 ///   child: const LiveHardApp(),
 /// ));
 /// ```
 ///
-/// Copied from [isar].
-@ProviderFor(isar)
-final isarProvider = Provider<Isar>.internal(
-  isar,
-  name: r'isarProvider',
+/// Copied from [database].
+@ProviderFor(database)
+final databaseProvider = Provider<Database>.internal(
+  database,
+  name: r'databaseProvider',
   debugGetCreateSourceHash:
-      const bool.fromEnvironment('dart.vm.product') ? null : _$isarHash,
+      const bool.fromEnvironment('dart.vm.product') ? null : _$databaseHash,
   dependencies: null,
   allTransitiveDependencies: null,
 );
 
-typedef IsarRef = ProviderRef<Isar>;
+typedef DatabaseRef = ProviderRef<Database>;
 String _$programDateLogicHash() => r'913ddf6f0b1f1c970931933b491a3553caba72f6';
 
 /// Servicio de reglas de calendario (Dart puro, sin estado).
@@ -50,9 +48,9 @@ final programDateLogicProvider = Provider<ProgramDateLogic>.internal(
 );
 
 typedef ProgramDateLogicRef = ProviderRef<ProgramDateLogic>;
-String _$programRepositoryHash() => r'f09af85be28f1f40717f697c74f38c8463decf71';
+String _$programRepositoryHash() => r'412acaeb01ffde49ff115d55591e398c620e4b8c';
 
-/// Repositorio de datos (acceso a Isar). Vive tanto como la app.
+/// Repositorio de datos (acceso a sembast). Vive tanto como la app.
 ///
 /// Copied from [programRepository].
 @ProviderFor(programRepository)
@@ -67,9 +65,9 @@ final programRepositoryProvider = Provider<ProgramRepository>.internal(
 );
 
 typedef ProgramRepositoryRef = ProviderRef<ProgramRepository>;
-String _$programStateHash() => r'd9a9c556292f8a4d3dc3ebee00df45def1e9e92d';
+String _$programStateHash() => r'c458d97b64db956180ed65747d838e1813c0607d';
 
-/// Estado del programa observado en vivo desde Isar (singleton id == 1).
+/// Estado del programa observado en vivo (singleton id == 1).
 ///
 /// Copied from [programState].
 @ProviderFor(programState)

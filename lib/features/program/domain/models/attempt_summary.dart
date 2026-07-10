@@ -3,7 +3,7 @@ import '../../../../core/enums/program_phase.dart';
 /// Resumen de UN intento (racha) de una fase, para la pantalla de progreso.
 ///
 /// Por ahora se alimenta de mock data; más adelante se derivará de los
-/// [DailyRecord] guardados en Isar (un intento = el tramo entre un inicio de
+/// [DailyRecord] guardados en la base de datos (un intento = el tramo entre un inicio de
 /// fase y el siguiente reinicio/avance).
 class AttemptSummary {
   const AttemptSummary({
